@@ -8,6 +8,10 @@ class Channel(nn.Module):
             raise Exception('Unknown type of channel')
         super(Channel, self).__init__()
         self.channel_type = channel_type
+
+        # if constant snr this is single integer/float,
+        # otherwise it is a tuple of the snr range
+        # distribuited is set as uniform
         self.snr = snr
 
     def forward(self, z_hat):
@@ -27,9 +31,19 @@ class Channel(nn.Module):
             z_hat = z_hat.unsqueeze(0)
         
         k = z_hat[0].numel()
-        sig_pwr = torch.sum(torch.abs(z_hat).square(), dim=(1, 2, 3), keepdim=True) / k    
-        noi_pwr = sig_pwr / (10 ** (self.snr / 10))
-        noise = torch.randn_like(z_hat) * torch.sqrt(noi_pwr/2)
+        sig_pwr = torch.sum(torch.abs(z_hat).square(), dim=(1, 2, 3), keepdim=True) / k
+
+        # constant snr
+        if isinstance(self.snr, (int, float)):
+            noi_pwr = sig_pwr / (10 ** (self.snr / 10))
+            noise = torch.randn_like(z_hat) * torch.sqrt(noi_pwr/2)
+
+        # variable snr
+        else:
+            noi_snr = torch.empty_like(x).uniform_(self.snr[0], self.snr[1])
+            noi_pwr = sig_pwr / (10 ** (noi_snr / 10))
+            noise = torch.randn_like(z_hat) * torch.sqrt(noi_pwr/2)
+
         if self.channel_type == 'Rayleigh':
             # hc = torch.randn_like(z_hat)  wrong implement before
             # hc = torch.randn(1, device = z_hat.device) 
@@ -40,7 +54,6 @@ class Channel(nn.Module):
             z_hat[:,:z_hat.size(1)//2] = hc[0] * z_hat[:,:z_hat.size(1)//2]
             z_hat[:,z_hat.size(1)//2:] = hc[1] * z_hat[:,z_hat.size(1)//2:]
             
-
             # z_hat = hc * z_hat
 
         return z_hat + noise
