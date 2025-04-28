@@ -40,7 +40,7 @@ class Channel(nn.Module):
 
         # variable snr
         else:
-            noi_snr = torch.empty_like(x).uniform_(self.snr[0], self.snr[1])
+            noi_snr = torch.empty_like(z_hat).uniform_(self.snr[0], self.snr[1])
             noi_pwr = sig_pwr / (10 ** (noi_snr / 10))
             noise = torch.randn_like(z_hat) * torch.sqrt(noi_pwr/2)
 
