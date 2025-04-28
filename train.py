@@ -80,6 +80,14 @@ def config_parser_pipeline():
 
     return parser.parse_args()
 
+def parse_snr_list(snr_list):
+    parsed = []
+    for item in snr_list:
+        if isinstance(item, (list, tuple)):
+            parsed.append(tuple(map(float, item)))
+        else:
+            parsed.append(float(item))
+    return parsed
 
 def main_pipeline():
     args = config_parser_pipeline()
@@ -87,7 +95,7 @@ def main_pipeline():
     print("Training Start")
     dataset_name = args.dataset
     out_dir = args.out
-    args.snr_list = list(map(float, args.snr_list))
+    args.snr_list = parse_snr_list(args.snr_list)
     args.ratio_list = list(map(lambda x: float(Fraction(x)), args.ratio_list))
     params = {}
     params['disable_tqdm'] = args.disable_tqdm
