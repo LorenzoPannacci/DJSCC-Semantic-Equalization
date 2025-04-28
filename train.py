@@ -62,6 +62,14 @@ def evaluate_epoch(model, param, data_loader):
 
     return epoch_loss
 
+def parse_snr(value):
+    from ast import literal_eval
+
+    # try to parse the value as a tuple, otherwise treat it as a float
+    try:
+        return literal_eval(value) if '(' in value else float(value)
+    except (ValueError, SyntaxError):
+        raise argparse.ArgumentTypeError(f"Invalid value for snr_list: {value}")
 
 def config_parser_pipeline():
     import argparse
@@ -72,22 +80,14 @@ def config_parser_pipeline():
     parser.add_argument('--disable_tqdm', default=False, type=bool, help='disable_tqdm')
     parser.add_argument('--device', default='cuda:0', type=str, help='device')
     parser.add_argument('--parallel', default=False, type=bool, help='parallel')
-    parser.add_argument('--snr_list', default=['19', '13',
-                        '7', '4', '1'], nargs='+', help='snr_list')
+    parser.add_argument('--snr_list', default=['19', '13', '7', '4', '1'],
+                        nargs='+', type=parse_snr, help='snr_list')
     parser.add_argument('--ratio_list', default=['1/6', '1/12'], nargs='+', help='ratio_list')
     parser.add_argument('--channel', default='AWGN', type=str,
                         choices=['AWGN', 'Rayleigh'], help='channel')
 
     return parser.parse_args()
 
-def parse_snr_list(snr_list):
-    parsed = []
-    for item in snr_list:
-        if isinstance(item, (list, tuple)):
-            parsed.append(tuple(map(float, item)))
-        else:
-            parsed.append(float(item))
-    return parsed
 
 def main_pipeline():
     args = config_parser_pipeline()
@@ -95,7 +95,7 @@ def main_pipeline():
     print("Training Start")
     dataset_name = args.dataset
     out_dir = args.out
-    args.snr_list = parse_snr_list(args.snr_list)
+    args.snr_list = [item for item in args.snr_list]
     args.ratio_list = list(map(lambda x: float(Fraction(x)), args.ratio_list))
     params = {}
     params['disable_tqdm'] = args.disable_tqdm
