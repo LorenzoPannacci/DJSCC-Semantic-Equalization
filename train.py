@@ -85,6 +85,7 @@ def config_parser_pipeline():
     parser.add_argument('--ratio_list', default=['1/6', '1/12'], nargs='+', help='ratio_list')
     parser.add_argument('--channel', default='AWGN', type=str,
                         choices=['AWGN', 'Rayleigh'], help='channel')
+    parser.add_argument('--seed', default='42', help='seed')
 
     return parser.parse_args()
 
@@ -105,6 +106,7 @@ def main_pipeline():
     params['snr_list'] = args.snr_list
     params['ratio_list'] = args.ratio_list
     params['channel'] = args.channel
+    params['seed'] = int(args.seed)
     if dataset_name == 'cifar10':
         params['batch_size'] = 64  # 1024
         params['num_workers'] = 4
@@ -115,7 +117,6 @@ def main_pipeline():
         params['if_scheduler'] = True
         params['step_size'] = 640
         params['gamma'] = 0.1
-        params['seed'] = 42
         params['ReduceLROnPlateau'] = False
         params['lr_reduce_factor'] = 0.5
         params['lr_schedule_patience'] = 15
@@ -130,7 +131,6 @@ def main_pipeline():
         params['parallel'] = True
         params['if_scheduler'] = True
         params['gamma'] = 0.1
-        params['seed'] = 42
         params['ReduceLROnPlateau'] = True
         params['lr_reduce_factor'] = 0.5
         params['lr_schedule_patience'] = 15
