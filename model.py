@@ -145,7 +145,8 @@ class DeepJSCC(nn.Module):
     def __init__(self, c, channel_type='AWGN', snr=None):
         super(DeepJSCC, self).__init__()
         self.encoder = _Encoder(c=c)
-        if snr is not None:
+        self.snr = snr
+        if self.snr is not None:
             self.channel = Channel(channel_type, snr)
         self.decoder = _Decoder(c=c)
 
