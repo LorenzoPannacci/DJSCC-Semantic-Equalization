@@ -17,6 +17,10 @@ def image_normalization(norm_type):
 
 def get_psnr(image, gt, max_val=255, mse=None):
     if mse is None:
+        
+        if image.shape[0] == 1:
+            image = image.squeeze(0)
+
         mse = F.mse_loss(image, gt)
     mse = torch.tensor(mse) if not isinstance(mse, torch.Tensor) else mse
 
