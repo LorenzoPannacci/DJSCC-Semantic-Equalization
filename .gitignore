@@ -10,3 +10,4 @@ output.txt
 .vscode/*
 *.sh
 /out_original
+todo.txt

@@ -10,14 +10,14 @@ class _LinearAlignment(nn.Module):
     def __init__(self, align_matrix):
         super(_LinearAlignment, self).__init__()
 
-        self.align_matrix = align_matrix
+        self.align_matrix = nn.Parameter(align_matrix)
 
     def forward(self, x):
         # get shape of input
         shape = x.shape
 
         # flatten input
-        x = x.flatten()
+        x = x.flatten(start_dim=1)
 
         # apply alignment
         x = x @ self.align_matrix
@@ -46,7 +46,7 @@ class AlignedDeepJSCC(nn.Module):
     def forward(self, x):
         z = self.encoder(x)
 
-        if hasattr(self, 'channel') and self.channel is not None:
+        if self.channel is not None:
             z = self.channel(z)
 
         if self.aligner is not None:

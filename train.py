@@ -155,7 +155,7 @@ def train_pipeline(params):
     dataset_name = params['dataset']
     # load data
     if dataset_name == 'cifar10':
-        transform = transforms.Compose([transforms.ToTensor(), ])
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((64, 64))])
         train_dataset = datasets.CIFAR10(root='../dataset/', train=True,
                                          download=True, transform=transform)
 
