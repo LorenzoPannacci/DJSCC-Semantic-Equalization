@@ -24,24 +24,32 @@ class _LinearAlignment(nn.Module):
 
         # return to original shape
         return x.reshape(shape)
+    
+class _ConvolutionalAlignment(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3):
+        super(_ConvolutionalAlignment, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=kernel_size//2)
+
+    def forward(self, x):
+        return self.conv(x)
 
 class AlignedDeepJSCC(nn.Module):
-    def __init__(self, model1, model2, aligner):
+    def __init__(self, encoder, decoder, aligner, snr, channel_type):
         super(AlignedDeepJSCC, self).__init__()
 
         # get encoder from model1
-        self.encoder = model1.encoder
+        self.encoder = encoder
         
-        self.snr = model1.snr
+        self.snr = snr
 
         if self.snr is not None:
-            self.channel = model1.channel
+            self.channel = Channel(channel_type, snr)
 
         # get aligner
         self.aligner = aligner
 
         # get decoder from model2
-        self.decoder = model2.decoder
+        self.decoder = decoder
 
     def forward(self, x):
         z = self.encoder(x)
