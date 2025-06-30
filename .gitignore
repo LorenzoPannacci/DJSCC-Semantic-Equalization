@@ -11,3 +11,4 @@ output.txt
 *.sh
 /out_original
 todo.txt
+/alignment/models/heavy
