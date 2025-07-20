@@ -75,7 +75,7 @@ def config_parser_pipeline():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='cifar10', type=str,
-                        choices=['cifar10', 'imagenet'], help='dataset')
+                        choices=['cifar10', 'imagenet', 'imagenette'], help='dataset')
     parser.add_argument('--out', default='./out', type=str, help='out_path')
     parser.add_argument('--disable_tqdm', default=False, type=bool, help='disable_tqdm')
     parser.add_argument('--device', default='cuda:0', type=str, help='device')
@@ -86,6 +86,7 @@ def config_parser_pipeline():
     parser.add_argument('--channel', default='AWGN', type=str,
                         choices=['AWGN', 'Rayleigh'], help='channel')
     parser.add_argument('--seed', default='42', help='seed')
+    parser.add_argument('--resolution', default=None, type=int)
 
     return parser.parse_args()
 
@@ -107,6 +108,8 @@ def main_pipeline():
     params['ratio_list'] = args.ratio_list
     params['channel'] = args.channel
     params['seed'] = int(args.seed)
+    params['resolution'] = args.resolution
+
     if dataset_name == 'cifar10':
         params['batch_size'] = 64  # 1024
         params['num_workers'] = 4
@@ -122,6 +125,23 @@ def main_pipeline():
         params['lr_schedule_patience'] = 15
         params['max_time'] = 12
         params['min_lr'] = 1e-5
+
+    if dataset_name == 'imagenette':
+        params['batch_size'] = 64  # 1024
+        params['num_workers'] = 4
+        params['epochs'] = 1000
+        params['init_lr'] = 1e-3  # 1e-2
+        params['weight_decay'] = 5e-4
+        params['parallel'] = False
+        params['if_scheduler'] = True
+        params['step_size'] = 640
+        params['gamma'] = 0.1
+        params['ReduceLROnPlateau'] = False
+        params['lr_reduce_factor'] = 0.5
+        params['lr_schedule_patience'] = 15
+        params['max_time'] = 12
+        params['min_lr'] = 1e-5
+
     elif dataset_name == 'imagenet':
         params['batch_size'] = 32
         params['num_workers'] = 4
@@ -136,6 +156,7 @@ def main_pipeline():
         params['lr_schedule_patience'] = 15
         params['max_time'] = 12
         params['min_lr'] = 1e-5
+
     else:
         raise Exception('Unknown dataset')
 
@@ -155,7 +176,12 @@ def train_pipeline(params):
     dataset_name = params['dataset']
     # load data
     if dataset_name == 'cifar10':
-        transform = transforms.Compose([transforms.ToTensor(), ])
+        resolution = params['resolution']
+        if resolution is None:
+            transform = transforms.Compose([transforms.ToTensor(), ])
+        else:
+            transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((int(resolution), int(resolution)))])
+
         train_dataset = datasets.CIFAR10(root='../dataset/', train=True,
                                          download=True, transform=transform)
 
@@ -165,11 +191,31 @@ def train_pipeline(params):
                                         download=True, transform=transform)
         test_loader = DataLoader(test_dataset, shuffle=True,
                                  batch_size=params['batch_size'], num_workers=params['num_workers'])
+        
+    if dataset_name == 'imagenette':
+
+        resolution = params['resolution']
+        if resolution is None:
+            transform = transforms.Compose([transforms.ToTensor(), ])
+        else:
+            transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((int(resolution), int(resolution)))])
+
+        train_dataset = datasets.Imagenette(root='../dataset/', split='train',
+                                         download=True, transform=transform)
+
+        train_loader = DataLoader(train_dataset, shuffle=True,
+                                  batch_size=params['batch_size'], num_workers=params['num_workers'])
+        test_dataset = datasets.Imagenette(root='../dataset/', split='val',
+                                        download=True, transform=transform)
+        test_loader = DataLoader(test_dataset, shuffle=True,
+                                 batch_size=params['batch_size'], num_workers=params['num_workers'])
 
     elif dataset_name == 'imagenet':
+
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Resize((128, 128))])  # the size of paper is 128
         print("loading data of imagenet")
+
         train_dataset = datasets.ImageFolder(root='../dataset/ImageNet/train', transform=transform)
 
         train_loader = DataLoader(train_dataset, shuffle=True,
@@ -321,7 +367,11 @@ def train(args, ratio: float, snr: float):  # deprecated
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     # load data
     if args.dataset == 'cifar10':
-        transform = transforms.Compose([transforms.ToTensor(), ])
+        if args.resolution is None:
+            transform = transforms.Compose([transforms.ToTensor(), ])
+        else:
+            transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((int(args.resolution), int(args.resolution)))])
+
         train_dataset = datasets.CIFAR10(root='../dataset/', train=True,
                                          download=True, transform=transform)
 
@@ -331,9 +381,27 @@ def train(args, ratio: float, snr: float):  # deprecated
                                         download=True, transform=transform)
         test_loader = DataLoader(test_dataset, shuffle=True,
                                  batch_size=args.batch_size, num_workers=args.num_workers)
+        
+    elif args.dataset == "imagenette":
+        if args.resolution is None:
+            transform = transforms.Compose([transforms.ToTensor(), ])
+        else:
+            transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((int(args.resolution), int(args.resolution)))])
+
+        train_dataset = datasets.Imagenette(root='../dataset/', split='train',
+                                         download=True, transform=transform)
+
+        train_loader = DataLoader(train_dataset, shuffle=True,
+                                  batch_size=args.batch_size, num_workers=args.num_workers)
+        test_dataset = datasets.Imagenette(root='../dataset/', split='val',
+                                        download=True, transform=transform)
+        test_loader = DataLoader(test_dataset, shuffle=True,
+                                 batch_size=args.batch_size, num_workers=args.num_workers)
+        
     elif args.dataset == 'imagenet':
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Resize((128, 128))])  # the size of paper is 128
+        
         print("loading data of imagenet")
         train_dataset = datasets.ImageFolder(root='./dataset/ImageNet/train', transform=transform)
 
@@ -412,13 +480,14 @@ def config_parser():  # deprecated
                         '1/6', '1/12'], nargs='+', help='ratio_list')
     parser.add_argument('--num_workers', default=0, type=int, help='num_workers')
     parser.add_argument('--dataset', default='cifar10', type=str,
-                        choices=['cifar10', 'imagenet'], help='dataset')
+                        choices=['cifar10', 'imagenet', 'imagenette'], help='dataset')
     parser.add_argument('--parallel', default=False, type=bool, help='parallel')
     parser.add_argument('--if_scheduler', default=False, type=bool, help='if_scheduler')
     parser.add_argument('--step_size', default=640, type=int, help='scheduler')
     parser.add_argument('--device', default='cuda:0', type=str, help='device')
     parser.add_argument('--gamma', default=0.5, type=float, help='gamma')
     parser.add_argument('--disable_tqdm', default=True, type=bool, help='disable_tqdm')
+    parser.add_argument('--resolution', default=None, type=int)
     return parser.parse_args()
 
 
