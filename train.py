@@ -206,7 +206,7 @@ def train_pipeline(params):
         train_loader = DataLoader(train_dataset, shuffle=True,
                                   batch_size=params['batch_size'], num_workers=params['num_workers'])
         test_dataset = datasets.Imagenette(root='../dataset/', split='val',
-                                        download=True, transform=transform)
+                                        download=False, transform=transform)
         test_loader = DataLoader(test_dataset, shuffle=True,
                                  batch_size=params['batch_size'], num_workers=params['num_workers'])
 
