@@ -127,7 +127,7 @@ def main_pipeline():
         params['min_lr'] = 1e-5
 
     if dataset_name == 'imagenette':
-        params['batch_size'] = 1024  # 1024
+        params['batch_size'] = 64  # 1024
         params['num_workers'] = 4
         params['epochs'] = 1000
         params['init_lr'] = 1e-3  # 1e-2
@@ -188,7 +188,7 @@ def train_pipeline(params):
         train_loader = DataLoader(train_dataset, shuffle=True,
                                   batch_size=params['batch_size'], num_workers=params['num_workers'])
         test_dataset = datasets.CIFAR10(root='../dataset/', train=False,
-                                        download=True, transform=transform)
+                                        download=False, transform=transform)
         test_loader = DataLoader(test_dataset, shuffle=True,
                                  batch_size=params['batch_size'], num_workers=params['num_workers'])
         

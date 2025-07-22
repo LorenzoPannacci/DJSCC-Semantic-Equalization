@@ -5,12 +5,18 @@
 
 import torch.nn as nn
 from channel import Channel
+import torch
 
 class _LinearAlignment(nn.Module):
-    def __init__(self, align_matrix):
+    def __init__(self, size=None, align_matrix=None):
         super(_LinearAlignment, self).__init__()
 
-        self.align_matrix = nn.Parameter(align_matrix)
+        if align_matrix is not None:
+            self.align_matrix = nn.Parameter(align_matrix)
+
+        else:
+            self.align_matrix = nn.Parameter(torch.empty(size, size))
+            nn.init.xavier_uniform_(self.align_matrix)
 
     def forward(self, x):
         # get shape of input
@@ -24,7 +30,8 @@ class _LinearAlignment(nn.Module):
 
         # return to original shape
         return x.reshape(shape)
-    
+
+
 class _ConvolutionalAlignment(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3):
         super(_ConvolutionalAlignment, self).__init__()
@@ -32,6 +39,27 @@ class _ConvolutionalAlignment(nn.Module):
 
     def forward(self, x):
         return self.conv(x)
+
+
+class _ZeroShotAlignment(nn.Module):
+    def __init__(self, align_matrix):
+        super(_ZeroShotAlignment, self).__init__()
+
+        self.align_matrix = nn.Parameter(align_matrix)
+
+    def forward(self, x):
+        # get shape of input
+        shape = x.shape
+
+        # flatten input
+        x = x.flatten(start_dim=1)
+
+        # apply alignment
+        x = (self.align_matrix @ x.T).T
+
+        # return to original shape
+        return x.reshape(shape)
+
 
 class AlignedDeepJSCC(nn.Module):
     def __init__(self, encoder, decoder, aligner, snr, channel_type):
@@ -44,6 +72,8 @@ class AlignedDeepJSCC(nn.Module):
 
         if self.snr is not None:
             self.channel = Channel(channel_type, snr)
+        else:
+            self.channel = None
 
         # get aligner
         self.aligner = aligner
@@ -56,6 +86,8 @@ class AlignedDeepJSCC(nn.Module):
 
         if self.channel is not None:
             z = self.channel(z)
+        else:
+            z = z.unsqueeze(0)
 
         if self.aligner is not None:
             z = self.aligner(z)
