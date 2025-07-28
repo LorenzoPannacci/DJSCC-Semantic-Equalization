@@ -22,6 +22,7 @@ def load_deep_jscc(path, snr, c, channel_type):
 def get_batch_psnr(images, gts, max_val=255):
     # assumes shape: (B, C, H, W)
     batch_mse = F.mse_loss(images, gts, reduction='none')
-    batch_mse = batch_mse.view(batch_mse.size(0), -1).mean(dim=1) # mean over each image
+
+    batch_mse = batch_mse.view(batch_mse.shape[0], -1).mean(dim=1) # mean over each image
     psnr = 10 * torch.log10(max_val**2 / batch_mse)
     return psnr  # shape: (B,)
