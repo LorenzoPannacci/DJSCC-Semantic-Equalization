@@ -194,7 +194,7 @@ def train_pipeline(params):
         test_loader = DataLoader(test_dataset, shuffle=True,
                                  batch_size=params['batch_size'], num_workers=params['num_workers'])
         
-    if dataset_name == 'imagenette':
+    elif dataset_name == 'imagenette':
 
         resolution = params['resolution']
         if resolution is None:
