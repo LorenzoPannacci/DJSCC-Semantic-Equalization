@@ -6,6 +6,7 @@ class Channel(nn.Module):
     def __init__(self, channel_type='AWGN', snr=20):
         if channel_type not in ['AWGN', 'Rayleigh']:
             raise Exception('Unknown type of channel')
+        
         super(Channel, self).__init__()
         self.channel_type = channel_type
 
@@ -14,24 +15,17 @@ class Channel(nn.Module):
         # distribuited is set as uniform
         self.snr = snr
 
-    def forward(self, z_hat):
-        if z_hat.dim() not in {3, 4}:
-            raise ValueError('Input tensor must be 3D or 4D')
-        
-        # if z_hat.dim() == 4:
-        #     # k = np.prod(z_hat.size()[1:])
-        #     k = torch.prod(torch.tensor(z_hat.size()[1:]))
-        #     sig_pwr = torch.sum(torch.abs(z_hat).square(), dim=(1, 2, 3), keepdim=True) / k
-        # elif z_hat.dim() == 3:
-        #     # k = np.prod(z_hat.size())
-        #     k = torch.prod(torch.tensor(z_hat.size()))
-        #     sig_pwr = torch.sum(torch.abs(z_hat).square()) / k
-            
-        if z_hat.dim() == 3:
+    def forward(self, z_hat):            
+        if z_hat.dim() == 3 or z_hat.dim() == 1:
             z_hat = z_hat.unsqueeze(0)
         
         k = z_hat[0].numel()
-        sig_pwr = torch.sum(torch.abs(z_hat).square(), dim=(1, 2, 3), keepdim=True) / k
+
+        if z_hat.dim() == 4:
+            sig_pwr = torch.sum(torch.abs(z_hat).square(), dim=(1, 2, 3), keepdim=True) / k
+
+        elif z_hat.dim() == 2:
+            sig_pwr = torch.sum(torch.abs(z_hat).square(), dim=1, keepdim=True) / k
 
         # constant snr
         if isinstance(self.snr, (int, float)):

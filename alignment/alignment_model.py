@@ -41,26 +41,6 @@ class _ConvolutionalAlignment(nn.Module):
         return self.conv(x)
 
 
-class _ZeroShotAlignment(nn.Module):
-    def __init__(self, align_matrix):
-        super(_ZeroShotAlignment, self).__init__()
-
-        self.align_matrix = nn.Parameter(align_matrix)
-
-    def forward(self, x):
-        # get shape of input
-        shape = x.shape
-
-        # flatten input
-        x = x.flatten(start_dim=1)
-
-        # apply alignment
-        x = (self.align_matrix @ x.T).T
-
-        # return to original shape
-        return x.reshape(shape)
-
-
 class AlignedDeepJSCC(nn.Module):
     def __init__(self, encoder, decoder, aligner, snr, channel_type):
         super(AlignedDeepJSCC, self).__init__()
@@ -91,6 +71,68 @@ class AlignedDeepJSCC(nn.Module):
             z = self.aligner(z)
         
         x_hat = self.decoder(z)
+        return x_hat
+
+    def change_channel(self, channel_type='AWGN', snr=None):
+        if snr is None:
+            self.channel = None
+        else:
+            self.channel = Channel(channel_type, snr)
+
+    def get_channel(self):
+        if hasattr(self, 'channel') and self.channel is not None:
+            return self.channel.get_channel()
+        return None
+
+    def loss(self, prd, gt):
+        criterion = nn.MSELoss(reduction='mean')
+        loss = criterion(prd, gt)
+        return loss
+
+class _ZeroShotAlignment(nn.Module):
+    def __init__(self, F_tilde, G_tilde):
+        super(_ZeroShotAlignment, self).__init__()
+
+        self.F_tilde = nn.Parameter(F_tilde.T)
+
+        self.G_tilde = nn.Parameter(G_tilde.T)
+
+    def compression(self, input):
+        return input @ self.F_tilde
+    
+    def decompression(self, input):
+        return input @ self.G_tilde
+
+
+class ZeroShotAlignedDeepJSCC(AlignedDeepJSCC):
+    def forward(self, x):
+        z = self.encoder(x)
+
+        # get shape of input
+        shape = z.shape
+
+        # flatten input
+        if z.dim() == 4:
+
+            z = z.flatten(start_dim=1)
+        
+        elif z.dim() == 3:
+            z = z.flatten(start_dim=0)
+            z = z.reshape(1, -1)
+
+        # zeroshot compression
+        z = self.aligner.compression(z)
+
+        if self.channel is not None:
+            z = self.channel(z)
+
+        # zeroshot decompression
+        z = self.aligner.decompression(z)
+
+        z = z.reshape(shape)
+        
+        x_hat = self.decoder(z)
+
         return x_hat
 
     def change_channel(self, channel_type='AWGN', snr=None):
