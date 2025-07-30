@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+"""
+@author: LorenzoPannacci
+"""
+
 import torch
 
 from model import DeepJSCC

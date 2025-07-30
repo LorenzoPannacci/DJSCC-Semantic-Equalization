@@ -86,8 +86,6 @@ class AlignedDeepJSCC(nn.Module):
 
         if self.channel is not None:
             z = self.channel(z)
-        else:
-            z = z.unsqueeze(0)
 
         if self.aligner is not None:
             z = self.aligner(z)
