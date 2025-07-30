@@ -97,6 +97,7 @@ def main_pipeline():
 
     print("Training Start")
     dataset_name = args.dataset
+
     out_dir = args.out
     args.snr_list = [item for item in args.snr_list]
     args.ratio_list = list(map(lambda x: float(Fraction(x)), args.ratio_list))
@@ -127,7 +128,7 @@ def main_pipeline():
         params['max_time'] = 12
         params['min_lr'] = 1e-5
 
-    if dataset_name == 'imagenette':
+    elif dataset_name == 'imagenette':
         params['batch_size'] = 64  # 1024
         params['num_workers'] = 4
         params['epochs'] = 1000
