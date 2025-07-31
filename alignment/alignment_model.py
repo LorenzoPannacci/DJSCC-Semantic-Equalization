@@ -41,6 +41,20 @@ class _ConvolutionalAlignment(nn.Module):
         return self.conv(x)
 
 
+class _ZeroShotAlignment(nn.Module):
+    def __init__(self, F_tilde, G_tilde):
+        super(_ZeroShotAlignment, self).__init__()
+
+        self.F_tilde = nn.Parameter(F_tilde.T)
+        self.G_tilde = nn.Parameter(G_tilde.T)
+
+    def compression(self, input):
+        return input @ self.F_tilde
+    
+    def decompression(self, input):
+        return input @ self.G_tilde
+
+
 class AlignedDeepJSCC(nn.Module):
     def __init__(self, encoder, decoder, aligner, snr, channel_type):
         super(AlignedDeepJSCC, self).__init__()
@@ -61,7 +75,14 @@ class AlignedDeepJSCC(nn.Module):
         # get decoder from model2
         self.decoder = decoder
 
-    def forward(self, x):
+        # get forward function
+        if type(self.aligner) == _ZeroShotAlignment:
+            self.forward = self._forward_zeroshot
+        
+        else:
+            self.forward = self._forward_default
+
+    def _forward_default(self, x):
         z = self.encoder(x)
 
         if self.channel is not None:
@@ -73,39 +94,7 @@ class AlignedDeepJSCC(nn.Module):
         x_hat = self.decoder(z)
         return x_hat
 
-    def change_channel(self, channel_type='AWGN', snr=None):
-        if snr is None:
-            self.channel = None
-        else:
-            self.channel = Channel(channel_type, snr)
-
-    def get_channel(self):
-        if hasattr(self, 'channel') and self.channel is not None:
-            return self.channel.get_channel()
-        return None
-
-    def loss(self, prd, gt):
-        criterion = nn.MSELoss(reduction='mean')
-        loss = criterion(prd, gt)
-        return loss
-
-class _ZeroShotAlignment(nn.Module):
-    def __init__(self, F_tilde, G_tilde):
-        super(_ZeroShotAlignment, self).__init__()
-
-        self.F_tilde = nn.Parameter(F_tilde.T)
-
-        self.G_tilde = nn.Parameter(G_tilde.T)
-
-    def compression(self, input):
-        return input @ self.F_tilde
-    
-    def decompression(self, input):
-        return input @ self.G_tilde
-
-
-class ZeroShotAlignedDeepJSCC(AlignedDeepJSCC):
-    def forward(self, x):
+    def _forward_zeroshot(self, x):
         z = self.encoder(x)
 
         # get shape of input
