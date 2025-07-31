@@ -110,9 +110,9 @@ def aligner_least_squares(matrix_1, matrix_2, n_samples):
     return _LinearAlignment(align_matrix=Q)
 
 
-def load_alignment_dataset(model1_fp, model2_fp, train_snr, train_loader, device, flat=True):
-    model1 = load_from_checkpoint(model1_fp, train_snr).encoder
-    model2 = load_from_checkpoint(model2_fp, train_snr).encoder
+def load_alignment_dataset(model1_fp, model2_fp, train_snr, train_loader, c, device, flat=True):
+    model1 = load_from_checkpoint(model1_fp, train_snr, c, device).encoder
+    model2 = load_from_checkpoint(model2_fp, train_snr, c, device).encoder
 
     return AlignmentDataset(train_loader, model1, model2, device, flat)
 
