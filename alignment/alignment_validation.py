@@ -268,6 +268,8 @@ def prepare_models(model1_fp, model2_fp, aligner_fp, snr, c):
 
 
 def get_image_aligner(aligned_model, image_path, output_path, resolution, upscale_factor):
+    aligned_model = aligned_model.to("cpu")
+
     test_image = prepare_image(image_path, resolution)
 
     demo_image = aligned_model(test_image)
