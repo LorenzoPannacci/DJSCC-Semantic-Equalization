@@ -5,16 +5,20 @@
 
 import numpy as np
 import torch
+import pickle
 import torch.multiprocessing as mp
+import matplotlib.pyplot as plt
 from torchvision import transforms
 
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 
 from utils import image_normalization
-from alignment.alignment_utils import get_batch_psnr
+from alignment.alignment_model import AlignedDeepJSCC
+from alignment.alignment_utils import *
 from alignment.alignment_training import *
 from alignment.alignment_validation import *
+from utils import get_psnr
 
 
 def validation_worker(model, inputs, gt, times, worker_id):
@@ -233,11 +237,38 @@ def validation_sequential(model, dataloader, times, device):
     return total_psnr / total_samples
 
 
-def get_image_aligner(aligned_model, image_path, output_path, resolution, upscale_factor):
-    transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((resolution, resolution))])
+def prepare_image(image_path, resolution):
+    if resolution is None:
+        transform = transforms.Compose([transforms.ToTensor(), ])
+
+    else:
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((resolution, resolution))])
+
     test_image = Image.open(image_path)
     test_image.load()
     test_image = transform(test_image)
+
+    return test_image
+
+
+def prepare_models(model1_fp, model2_fp, aligner_fp, snr, c):
+    model1 = load_deep_jscc(model1_fp, snr, c, "AWGN")
+    model2 = load_deep_jscc(model2_fp, snr, c, "AWGN")
+
+    encoder = copy.deepcopy(model1.encoder)
+    decoder = copy.deepcopy(model2.decoder)
+
+    with open(aligner_fp, 'rb') as f:
+        aligner = pickle.load(f)
+
+    aligned_model = AlignedDeepJSCC(encoder, decoder, aligner, snr, "AWGN")
+    unaligned_model = AlignedDeepJSCC(encoder, decoder, None, snr, "AWGN")
+
+    return model1, unaligned_model, aligned_model
+
+
+def get_image_aligner(aligned_model, image_path, output_path, resolution, upscale_factor):
+    test_image = prepare_image(image_path, resolution)
 
     demo_image = aligned_model(test_image)
     demo_image = image_normalization('denormalization')(demo_image)
@@ -253,3 +284,37 @@ def get_image_aligner(aligned_model, image_path, output_path, resolution, upscal
     pil_image = pil_image.resize(new_size, Image.NEAREST)  # Use NEAREST or BICUBIC
 
     pil_image.save(output_path)
+
+
+def visualization_pipeline(model, image_path, resolution, times, upscale_factor):  
+    test_image = prepare_image(image_path, resolution)
+
+    psnr_all = 0.0
+
+    model.to("cpu")
+
+    with torch.no_grad():
+        for _ in range(times):
+            demo_image = model(test_image)
+            demo_image = image_normalization('denormalization')(demo_image)
+            gt = image_normalization('denormalization')(test_image)
+            psnr_all += get_psnr(demo_image, gt)
+
+        # prepare image for visualization
+        demo_image = image_normalization('normalization')(demo_image)
+        demo_image = torch.cat([test_image, demo_image.squeeze()], dim=1)  # (C, H, W)
+        demo_image = demo_image.numpy()  # (C, H, W)
+        demo_image = demo_image.transpose(1, 2, 0)  # convert to (H, W, C) for PIL
+
+        # convert to PIL image and upscale
+        pil_image = Image.fromarray((demo_image * 255).astype(np.uint8))
+        new_size = (pil_image.width * upscale_factor, pil_image.height * upscale_factor)
+        pil_image = pil_image.resize(new_size, Image.NEAREST)  # Use NEAREST or BICUBIC
+
+    # show the upscaled image
+    plt.figure(figsize=(new_size[0] / 100, new_size[1] / 100), dpi=100)
+    plt.imshow(pil_image)
+    plt.axis('off')
+    plt.show()
+
+    print("Average PSNR is {:.2f} over {} runs.".format(psnr_all.item() / times, times))
