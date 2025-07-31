@@ -14,8 +14,4 @@ todo.txt
 /data
 /alignment/logs
 /alignment/models
-alignment/old_code.ipynb
-alignment/linear_models_gpu.py
-alignment/zeroshot_utils_gpu.py
-alignment/linear_models.py
-alignment/zeroshot_utils.py
+/alignment/old
