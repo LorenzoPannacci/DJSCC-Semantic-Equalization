@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 @author: LorenzoPannacci
+
+In this file are defined functions and classes for training of aligners.
 """
 
 import torch
@@ -12,13 +14,17 @@ import random
 
 from torch.utils.data import Dataset, DataLoader, Subset
 from alignment.alignment_model import _ConvolutionalAlignment, _LinearAlignment, _ZeroShotAlignment
-from alignment.linear_models_gpu import Baseline
 
 from model import DeepJSCC
 from tqdm import tqdm
 from channel import Channel
 
 class AlignmentDataset(Dataset):
+    """
+    Dataset class for alignment. Samples are representations of the same image
+    in the latent space of two different DeepJSCC models.
+    """
+
     def __init__(self, dataloader, model1, model2, device, flat=False):
         self.outputs = []
 
@@ -49,7 +55,18 @@ class AlignmentDataset(Dataset):
         return self.outputs[idx]  
 
 
+def load_alignment_dataset(model1_fp, model2_fp, train_snr, train_loader, c, device, flat=True):
+    model1 = load_from_checkpoint(model1_fp, train_snr, c, device).encoder
+    model2 = load_from_checkpoint(model2_fp, train_snr, c, device).encoder
+
+    return AlignmentDataset(train_loader, model1, model2, device, flat)
+
+
 def set_seed(seed):
+    """
+    Sets all seeds for reproducibility.
+    """
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -60,6 +77,10 @@ def set_seed(seed):
 
 
 def load_from_checkpoint(path, snr, c, device):
+    """
+    Load DeepJSCC from .pkl checkpoint.
+    """
+
     state_dict = torch.load(path, map_location=device)
     from collections import OrderedDict
     new_state_dict = OrderedDict()
@@ -77,6 +98,10 @@ def load_from_checkpoint(path, snr, c, device):
 
 
 def dataset_to_matrices(dataset, batch_size=128):
+    """
+    Convert dataset to matrices for Least Squares optimization.
+    """
+
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     data_1 = []
     data_2 = []
@@ -87,46 +112,43 @@ def dataset_to_matrices(dataset, batch_size=128):
 
     return torch.cat(data_1, dim=0), torch.cat(data_2, dim=0)
 
+def aligner_least_squares(matrix_1, matrix_2, regularization):
+    """
+    Solve least squares problem with regularization.
+    """
 
-def aligner_least_squares(matrix_1, matrix_2):
     Y = matrix_1.T
     Z = matrix_2.T
-
-    Q = Y @ Z.T @ torch.inverse(Z @ Z.T)
-
-    return _LinearAlignment(align_matrix=Q)
-
-
-def aligner_least_squares(matrix_1, matrix_2, n_samples):
-    Y = matrix_1.T  # [d, n]
-    Z = matrix_2.T  # [d, n]
 
     ZZ_T = Z @ Z.T
     YZ_T = Y @ Z.T
 
-    reg_matrix = (10000) * torch.eye(ZZ_T.size(0), device=ZZ_T.device, dtype=ZZ_T.dtype)
+    reg_matrix = regularization * torch.eye(ZZ_T.size(0), device=ZZ_T.device, dtype=ZZ_T.dtype)
     Q = YZ_T @ torch.linalg.inv(ZZ_T + reg_matrix)
 
     return _LinearAlignment(align_matrix=Q)
 
 
-def load_alignment_dataset(model1_fp, model2_fp, train_snr, train_loader, c, device, flat=True):
-    model1 = load_from_checkpoint(model1_fp, train_snr, c, device).encoder
-    model2 = load_from_checkpoint(model2_fp, train_snr, c, device).encoder
-
-    return AlignmentDataset(train_loader, model1, model2, device, flat)
-
-
 def train_linear_aligner(data, permutation, n_samples):
+    """
+    Train linear aligner with least squares.
+    """
 
+    # train settings
+    regularization = 10000
+
+    # prepare data
     indices = permutation[:n_samples]
     subset = Subset(data, indices)
-
     matrix_1, matrix_2 = dataset_to_matrices(subset)
 
-    return aligner_least_squares(matrix_1, matrix_2, n_samples)
+    return aligner_least_squares(matrix_1, matrix_2, regularization)
 
 def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
+    """
+    Train linear aligner with Adam optimization.
+    """
+
     # train settings
     epochs_max = 10000
     patience = 10
@@ -195,6 +217,10 @@ def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, r
     return aligner, epoch
 
 def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
+    """
+    Train convolutional aligner with Adam optimization.
+    """
+
     # train settings
     epochs_max=10000
     patience=10
@@ -261,6 +287,10 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
     return aligner, epoch
 
 def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usage, device):
+    """
+    Initializes zeroshot aligner.
+    """
+    
     # prepare data
     indices = permutation[:n_samples]
     subset = Subset(data, indices)
@@ -269,8 +299,9 @@ def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usag
     input = input.to(device)
     output = output.to(device)
 
-    idx = torch.randperm(input.size(0), device=device)[:channel_usage]
+    # gets F_tilde and G_tilde
 
+    idx = torch.randperm(input.size(0), device=device)[:channel_usage]
     input_subset = input[idx]
     output_subset = output[idx]
 
@@ -280,9 +311,9 @@ def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usag
     U, _, Vt = torch.linalg.svd(output_subset, full_matrices=False)
     G_tilde = (U @ Vt).H.to(device)
 
-    # create L and mean
-    input = F_tilde @ input.T
+    # gets L and mean
 
+    input = F_tilde @ input.T
     C = torch.cov(input)
 
     try:
@@ -291,7 +322,7 @@ def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usag
     except RuntimeError as e:
         if 'cholesky' in str(e).lower() or 'positive definite' in str(e).lower():
 
-            for eps in [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e-0]:
+            for eps in [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e-0, 1e+1, 1e+2, 1e+3]:
                 try:
                     reg = eps * torch.eye(C.shape[0] if len(C.shape) > 0 else 1, device=device, dtype=C.dtype)
                     L = torch.linalg.cholesky(C + reg)
@@ -312,7 +343,7 @@ def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usag
 
     mean = input.mean(axis=1, keepdim=True)
 
-    # create G
+    # gets G (and F but its constant)
 
     if train_snr is not None:
         reg = (1.0 / (10 ** (train_snr / 10)))
@@ -321,6 +352,5 @@ def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usag
     else:
         G = torch.Tensor([1]).unsqueeze(0)
 
-    # return aligner
-
+    # build and returns aligner
     return _ZeroShotAlignment(F_tilde, G_tilde, G, L, mean)

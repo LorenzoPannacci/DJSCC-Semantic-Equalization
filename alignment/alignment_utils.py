@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 @author: LorenzoPannacci
+
+Utils functions.
 """
 
 import torch
-
 from model import DeepJSCC
 import torch.nn.functional as F
 
 def load_deep_jscc(path, snr, c, channel_type):
+
     state_dict = torch.load(path, map_location=torch.device('cpu'))
     from collections import OrderedDict
     new_state_dict = OrderedDict()
@@ -23,6 +25,7 @@ def load_deep_jscc(path, snr, c, channel_type):
     model.change_channel(channel_type, snr)
 
     return model
+
 
 def get_batch_psnr(images, gts, max_val=255):
     # assumes shape: (B, C, H, W)

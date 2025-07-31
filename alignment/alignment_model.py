@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 @author: LorenzoPannacci
+
+In this file are defined all aligners and the DeepJSCC class that uses the aligners.
 """
 
 import torch.nn as nn
@@ -8,6 +10,9 @@ from channel import Channel
 import torch
 
 def a_inv_times_b(a, b):
+    """
+    Perform in an efficient way the A^{-1}B.
+    """
     
     try:
         c = torch.linalg.solve(a, b)
@@ -27,6 +32,12 @@ def a_inv_times_b(a, b):
 
 
 class _LinearAlignment(nn.Module):
+    """
+    Aligner class that uses a linear layer.
+
+    Used both for least squares and Adam optimization forms.
+    """
+
     def __init__(self, size=None, align_matrix=None):
         super(_LinearAlignment, self).__init__()
 
@@ -52,6 +63,10 @@ class _LinearAlignment(nn.Module):
 
 
 class _ConvolutionalAlignment(nn.Module):
+    """
+    Aligner class that uses one convolutional layer.
+    """
+
     def __init__(self, in_channels, out_channels, kernel_size=3):
         super(_ConvolutionalAlignment, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=kernel_size//2)
@@ -61,6 +76,10 @@ class _ConvolutionalAlignment(nn.Module):
 
 
 class _ZeroShotAlignment(nn.Module):
+    """
+    Aligner class that uses a zeroshot approach.
+    """
+
     def __init__(self, F_tilde, G_tilde, G, L, mean):
         super(_ZeroShotAlignment, self).__init__()
 
@@ -96,14 +115,18 @@ class _ZeroShotAlignment(nn.Module):
 
 
 class AlignedDeepJSCC(nn.Module):
+    """
+    DeepJSCC class that supports aligners.
+    """
+
     def __init__(self, encoder, decoder, aligner, snr, channel_type):
         super(AlignedDeepJSCC, self).__init__()
 
         # get encoder from model1
         self.encoder = encoder
         
+        # setup channel
         self.snr = snr
-
         if self.snr is not None:
             self.channel = Channel(channel_type, snr)
         else:
@@ -123,6 +146,10 @@ class AlignedDeepJSCC(nn.Module):
             self.forward = self._forward_default
 
     def _forward_default(self, x):
+        """
+        Forward function for most aligners.
+        """
+
         z = self.encoder(x)
 
         if self.channel is not None:
@@ -132,22 +159,24 @@ class AlignedDeepJSCC(nn.Module):
             z = self.aligner(z)
         
         x_hat = self.decoder(z)
+
         return x_hat
 
     def _forward_zeroshot(self, x):
+        """
+        Forward function for zeroshot aligner.
+        """
+
         z = self.encoder(x)
 
         # get shape of input
         shape = z.shape
 
         # flatten input
-        if z.dim() == 4:
+        if z.dim() == 3:
+            z = z.unsqueeze(0)
 
-            z = z.flatten(start_dim=1)
-        
-        elif z.dim() == 3:
-            z = z.flatten(start_dim=0)
-            z = z.reshape(1, -1)
+        z = z.flatten(start_dim=1)
 
         # zeroshot compression
         z = self.aligner.compression(z)
@@ -173,9 +202,11 @@ class AlignedDeepJSCC(nn.Module):
     def get_channel(self):
         if hasattr(self, 'channel') and self.channel is not None:
             return self.channel.get_channel()
+        
         return None
 
     def loss(self, prd, gt):
         criterion = nn.MSELoss(reduction='mean')
         loss = criterion(prd, gt)
+        
         return loss
