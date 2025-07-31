@@ -25,3 +25,6 @@ todo.txt
 /alignment/logs
 /alignment/models
 /alignment/models/giugno
+alignment/old_code.ipynb
+alignment/zeroshot_utils_gpu.py
+alignment/linear_models_gpu.py

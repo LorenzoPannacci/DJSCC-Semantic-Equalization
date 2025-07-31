@@ -263,8 +263,9 @@ def prepare_models(model1_fp, model2_fp, aligner_fp, snr, c):
 
     aligned_model = AlignedDeepJSCC(encoder, decoder, aligner, snr, "AWGN")
     unaligned_model = AlignedDeepJSCC(encoder, decoder, None, snr, "AWGN")
+    no_mismatch_model = AlignedDeepJSCC(encoder, copy.deepcopy(load_deep_jscc(model1_fp, snr, c, "AWGN").decoder), None, snr, "AWGN")
 
-    return model1, unaligned_model, aligned_model
+    return no_mismatch_model, unaligned_model, aligned_model
 
 
 def get_image_aligner(aligned_model, image_path, output_path, resolution, upscale_factor):

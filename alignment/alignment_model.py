@@ -7,6 +7,25 @@ import torch.nn as nn
 from channel import Channel
 import torch
 
+def a_inv_times_b(a, b):
+    
+    try:
+        c = torch.linalg.solve(a, b)
+
+    except RuntimeError as e:
+        if 'The input tensor A must have at least 2 dimensions' in str(e):
+            if len(a.shape) == 2 and a.shape[0] == 1 and a.shape[1] == 1:
+                c = (1 / a) * b
+
+            else:
+                raise e
+            
+        else:
+            raise e
+
+    return c
+
+
 class _LinearAlignment(nn.Module):
     def __init__(self, size=None, align_matrix=None):
         super(_LinearAlignment, self).__init__()
@@ -42,17 +61,38 @@ class _ConvolutionalAlignment(nn.Module):
 
 
 class _ZeroShotAlignment(nn.Module):
-    def __init__(self, F_tilde, G_tilde):
+    def __init__(self, F_tilde, G_tilde, G, L, mean):
         super(_ZeroShotAlignment, self).__init__()
 
-        self.F_tilde = nn.Parameter(F_tilde.T)
-        self.G_tilde = nn.Parameter(G_tilde.T)
+        self.F_tilde = nn.Parameter(F_tilde)
+        self.G_tilde = nn.Parameter(G_tilde)
+        self.G = nn.Parameter(G)
+        self.L = nn.Parameter(L)
+        self.mean = nn.Parameter(mean)
 
     def compression(self, input):
-        return input @ self.F_tilde
+        x_hat = input.T
+
+        # go to similarity scores
+        x_hat = self.F_tilde @ x_hat
+
+        # prewhitening
+        x_hat = a_inv_times_b(self.L, x_hat - self.mean)
+
+        # multiply by F is ignored because it is always 1
+        return x_hat
     
     def decompression(self, input):
-        return input @ self.G_tilde
+        # y_hat = input * self.G
+        y_hat = input
+
+        # dewhitening
+        y_hat = self.L @ y_hat + self.mean
+
+        # go back to image
+        y_hat = self.G_tilde @ y_hat
+
+        return y_hat.T
 
 
 class AlignedDeepJSCC(nn.Module):

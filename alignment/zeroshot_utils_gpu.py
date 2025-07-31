@@ -326,6 +326,8 @@ def prewhiten(
     x_train = x_train.to(device)
     if x_test is not None:
         x_test = x_test.to(device)
+
+    #    print(f"x_train.shape: {x_train.shape}")
     
     # --- Prewhiten the training set ---
     C = torch.cov(x_train)  # Training set covariance
@@ -335,7 +337,7 @@ def prewhiten(
     except RuntimeError as e:
         if 'cholesky' in str(e).lower() or 'positive definite' in str(e).lower():
             # Handle non-positive definite case by adding regularization
-            reg = 1e-6 * torch.eye(C.shape[0], device=device, dtype=C.dtype)
+            reg = 1e-6 * torch.eye(C.shape[0] if len(C.shape) > 0 else 1 , device=device, dtype=C.dtype)
             L = torch.linalg.cholesky(C + reg)
         elif 'The input tensor A must have at least 2 dimensions' in str(e):
             L = torch.sqrt(C).unsqueeze(0).unsqueeze(1)  # As a 1x1 tensor

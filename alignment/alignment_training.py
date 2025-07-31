@@ -260,30 +260,67 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
     
     return aligner, epoch
 
-def train_zeroshot_aligner(data, permutation, n_samples, resolution, train_snr, seed):
+def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usage, device):
     # prepare data
     indices = permutation[:n_samples]
     subset = Subset(data, indices)
     dataloader = DataLoader(subset, batch_size=len(subset))
     input, output = next(iter(dataloader))
+    input = input.to(device)
+    output = output.to(device)
 
-    flattened_image_size = resolution**2
+    idx = torch.randperm(input.size(0), device=device)[:channel_usage]
 
-    # init
-    baseline = Baseline(
-        input_dim=flattened_image_size,
-        output_dim=flattened_image_size,
-        channel_matrix=torch.eye(1, dtype=torch.complex64),
-        snr=train_snr,
-        channel_usage=None,
-        typology='pre',
-        strategy='PFE',
-        use_channel=True if train_snr is not None else False,
-        seed=seed,
-    )
+    input_subset = input[idx]
+    output_subset = output[idx]
 
-    # fit
-    baseline.fit(input, output)
+    U, _, Vt = torch.linalg.svd(input_subset, full_matrices=False)
+    F_tilde = (U @ Vt).to(device)
 
-    # convert
-    return _ZeroShotAlignment(baseline.F_tilde, baseline.G_tilde)
+    U, _, Vt = torch.linalg.svd(output_subset, full_matrices=False)
+    G_tilde = (U @ Vt).H.to(device)
+
+    # create L and mean
+    input = F_tilde @ input.T
+
+    C = torch.cov(input)
+
+    try:
+        L = torch.linalg.cholesky(C)
+
+    except RuntimeError as e:
+        if 'cholesky' in str(e).lower() or 'positive definite' in str(e).lower():
+
+            for eps in [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e-0]:
+                try:
+                    reg = eps * torch.eye(C.shape[0] if len(C.shape) > 0 else 1, device=device, dtype=C.dtype)
+                    L = torch.linalg.cholesky(C + reg)
+                    break
+                except RuntimeError as e_inner:
+                    if 'cholesky' in str(e_inner).lower() or 'positive definite' in str(e_inner).lower():
+                        continue
+                    else:
+                        raise e_inner
+            else:
+                raise RuntimeError("Cholesky failed even after increasing regularization.")
+
+        elif 'The input tensor A must have at least 2 dimensions' in str(e):
+            L = torch.sqrt(C).unsqueeze(0).unsqueeze(1)
+
+        else:
+            raise e
+
+    mean = input.mean(axis=1, keepdim=True)
+
+    # create G
+
+    if train_snr is not None:
+        reg = (1.0 / (10 ** (train_snr / 10)))
+        G = torch.linalg.inv(torch.Tensor([1 + reg]).unsqueeze(0))
+
+    else:
+        G = torch.Tensor([1]).unsqueeze(0)
+
+    # return aligner
+
+    return _ZeroShotAlignment(F_tilde, G_tilde, G, L, mean)
