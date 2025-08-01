@@ -130,21 +130,33 @@ def aligner_least_squares(matrix_1, matrix_2, regularization):
 
     return _LinearAlignment(align_matrix=Q)
 
+def aligner_least_squares_v2(matrix_1, matrix_2, snr, device):
+    X = matrix_1.T
+    Y = matrix_2.T
 
-def train_linear_aligner(data, permutation, n_samples):
+    snr_linear = 10 ** (snr / 10)
+    sigma2 = 1.0 / snr_linear # noise variance
+    noise_cov = sigma2 * torch.eye(X.shape[0])
+    # noise_cov = 10000 * torch.eye(X.shape[0])
+
+    F = Y @ X.H @ torch.linalg.inv(X @ X.H + noise_cov)
+
+    return _LinearAlignment(align_matrix=F.T)
+
+
+def train_linear_aligner(data, permutation, n_samples, train_snr, device, regularization=10000):
     """
     Train linear aligner with least squares.
     """
-
-    # train settings
-    regularization = 10000
 
     # prepare data
     indices = permutation[:n_samples]
     subset = Subset(data, indices)
     matrix_1, matrix_2 = dataset_to_matrices(subset)
 
-    return aligner_least_squares(matrix_1, matrix_2, regularization)
+    # return aligner_least_squares(matrix_1, matrix_2, regularization)
+
+    return aligner_least_squares_v2(matrix_1, matrix_2, train_snr, device)
 
 
 def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):

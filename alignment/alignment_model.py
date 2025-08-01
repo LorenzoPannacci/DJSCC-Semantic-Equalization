@@ -77,7 +77,11 @@ class _MLPAlignment(nn.Module):
         dims = [input_dim] + hidden_dims + [output_dim]
 
         for i in range(len(dims) - 1):
-            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            linear = nn.Linear(dims[i], dims[i + 1])
+            nn.init.xavier_uniform_(linear.weight)
+            nn.init.zeros_(linear.bias)
+            layers.append(linear)
+
             if i < len(dims) - 2:
                 layers.append(nonlinearity())
 
