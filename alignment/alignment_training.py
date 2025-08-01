@@ -63,26 +63,35 @@ def get_data_loaders(dataset, resolution, batch_size, num_workers):
 
 class AlignmentDataset(Dataset):
     def __init__(self, dataloader, model1, model2, device, flat=False):
-        self.inputs = []
-        self.model1 = model1.to(device).eval()
-        self.model2 = model2.to(device).eval()
         self.device = device
         self.flat = flat
 
-        for batch, _ in tqdm(dataloader, desc="Caching inputs"):
-            self.inputs.extend(batch)
+        model1.to(device).eval()
+        model2.to(device).eval()
+
+        input_batches = []
+        output_batches = []
+
+        with torch.no_grad():
+            for batch, _ in tqdm(dataloader, desc="Caching inputs"):
+                batch = batch.to(device)
+                input_batches.append(model1(batch).detach().cpu())
+                output_batches.append(model2(batch).detach().cpu())
+
+        self.inputs = torch.cat(input_batches, dim=0)
+        self.outputs = torch.cat(output_batches, dim=0)
 
     def __len__(self):
         return len(self.inputs)
 
     def __getitem__(self, idx):
-        x = self.inputs[idx].unsqueeze(0).to(self.device)  # add batch dim
-        with torch.no_grad():
-            out1 = self.model1(x)
-            out2 = self.model2(x)
+        out1 = self.inputs[idx].to(self.device)
+        out2 = self.outputs[idx].to(self.device)
+
         if self.flat:
             out1 = out1.flatten()
             out2 = out2.flatten()
+
         return out1, out2
 
 

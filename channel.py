@@ -15,7 +15,7 @@ class Channel(nn.Module):
         # distribuited is set as uniform
         self.snr = snr
 
-    def forward(self, z_hat):            
+    def forward(self, z_hat):
         if z_hat.dim() == 3 or z_hat.dim() == 1:
             z_hat = z_hat.unsqueeze(0)
         
