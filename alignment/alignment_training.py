@@ -19,42 +19,71 @@ from model import DeepJSCC
 from tqdm import tqdm
 from channel import Channel
 
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from torchvision import datasets
+from dataset import Vanilla
+
+def get_data_loaders(dataset, resolution, batch_size, num_workers):
+    if dataset == 'cifar10':
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((resolution, resolution))])
+
+        train_dataset = datasets.CIFAR10(root='../dataset/', train=True, download=True, transform=transform)
+        train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+
+        test_dataset = datasets.CIFAR10(root='../dataset/', train=False, download=True, transform=transform)
+        test_loader = DataLoader(test_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+
+    elif dataset == 'imagenet':
+        # the size of paper is 128
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((resolution, resolution))])
+
+        print("loading data of imagenet")
+
+        train_dataset = datasets.ImageFolder(root='./dataset/ImageNet/train', transform=transform)
+        train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+
+        test_dataset = Vanilla(root='./dataset/ImageNet/val', transform=transform)
+        test_loader = DataLoader(test_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+
+    elif dataset == 'imagenette':
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((resolution, resolution))])
+
+        train_dataset = datasets.Imagenette(root='../dataset/', split="train", download=True, transform=transform)
+        train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+
+        test_dataset = datasets.Imagenette(root='../dataset/', split="val", download=True, transform=transform)
+        test_loader = DataLoader(test_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+
+    else:
+        raise Exception('Unknown dataset')
+    
+    return train_loader, test_loader
+
 
 class AlignmentDataset(Dataset):
-    """
-    Dataset class for alignment. Samples are representations of the same image
-    in the latent space of two different DeepJSCC models.
-    """
-
     def __init__(self, dataloader, model1, model2, device, flat=False):
-        self.outputs = []
+        self.inputs = []
+        self.model1 = model1.to(device).eval()
+        self.model2 = model2.to(device).eval()
+        self.device = device
+        self.flat = flat
 
-        model1.eval()
-        model1.to(device)
-
-        model2.eval()
-        model2.to(device)
-
-        with torch.no_grad():
-            for inputs, _ in tqdm(dataloader, desc="Computing model outputs"):
-                inputs = inputs.to(device)
-
-                out1 = model1(inputs)
-                out2 = model2(inputs)
-
-                for o1, o2 in zip(out1, out2):
-                    if flat:
-                        o1 = o1.flatten()
-                        o2 = o2.flatten()
-
-                    self.outputs.append((o1.cpu(), o2.cpu()))
+        for batch, _ in tqdm(dataloader, desc="Caching inputs"):
+            self.inputs.extend(batch)
 
     def __len__(self):
-        return len(self.outputs)
+        return len(self.inputs)
 
     def __getitem__(self, idx):
-        return self.outputs[idx]  
-
+        x = self.inputs[idx].unsqueeze(0).to(self.device)  # add batch dim
+        with torch.no_grad():
+            out1 = self.model1(x)[0]
+            out2 = self.model2(x)[0]
+        if self.flat:
+            out1 = out1.flatten()
+            out2 = out2.flatten()
+        return out1, out2
 
 def load_alignment_dataset(model1_fp, model2_fp, train_snr, train_loader, c, device, flat=True):
     model1 = load_from_checkpoint(model1_fp, train_snr, c, device).encoder
@@ -114,37 +143,28 @@ def dataset_to_matrices(dataset, batch_size=128):
     return torch.cat(data_1, dim=0), torch.cat(data_2, dim=0)
 
 
-def aligner_least_squares(matrix_1, matrix_2, regularization):
+def aligner_least_squares(matrix_1, matrix_2, snr, regularization):
     """
     Solve least squares problem with regularization.
     """
 
-    Y = matrix_1.T
-    Z = matrix_2.T
+    X = matrix_1.H
+    Y = matrix_2.H
 
-    ZZ_T = Z @ Z.T
-    YZ_T = Y @ Z.T
-
-    reg_matrix = regularization * torch.eye(ZZ_T.size(0), device=ZZ_T.device, dtype=ZZ_T.dtype)
-    Q = YZ_T @ torch.linalg.inv(ZZ_T + reg_matrix)
-
-    return _LinearAlignment(align_matrix=Q)
-
-def aligner_least_squares_v2(matrix_1, matrix_2, snr, device):
-    X = matrix_1.T
-    Y = matrix_2.T
-
+    # noise handling
     snr_linear = 10 ** (snr / 10)
     sigma2 = 1.0 / snr_linear # noise variance
-    noise_cov = sigma2 * torch.eye(X.shape[0])
-    # noise_cov = 10000 * torch.eye(X.shape[0])
+    noise_cov = sigma2 * torch.eye(X.shape[0], device=X.device, dtype=X.dtype)
 
-    F = Y @ X.H @ torch.linalg.inv(X @ X.H + noise_cov)
+    # regularization
+    reg_matrix = regularization * torch.eye(X.shape[0], device=X.device, dtype=X.dtype)
+
+    F = Y @ X.H @ torch.linalg.inv(X @ X.H + noise_cov + reg_matrix)
 
     return _LinearAlignment(align_matrix=F.T)
 
 
-def train_linear_aligner(data, permutation, n_samples, train_snr, device, regularization=10000):
+def train_linear_aligner(data, permutation, n_samples, train_snr, regularization=10000):
     """
     Train linear aligner with least squares.
     """
@@ -154,9 +174,7 @@ def train_linear_aligner(data, permutation, n_samples, train_snr, device, regula
     subset = Subset(data, indices)
     matrix_1, matrix_2 = dataset_to_matrices(subset)
 
-    # return aligner_least_squares(matrix_1, matrix_2, regularization)
-
-    return aligner_least_squares_v2(matrix_1, matrix_2, train_snr, device)
+    return aligner_least_squares(matrix_1, matrix_2, train_snr, regularization)
 
 
 def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
@@ -241,7 +259,7 @@ def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, rati
     epochs_max = 10000
     patience = 10
     min_delta = 1e-5
-    lambda_reg = 0.001
+    lambda_reg = 0.01
 
     # prepare data
     indices = permutation[:n_samples]
