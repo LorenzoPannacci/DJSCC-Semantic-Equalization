@@ -12,6 +12,7 @@ from torchvision import transforms
 
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
+import gc
 
 from utils import image_normalization
 from alignment.alignment_model import AlignedDeepJSCC

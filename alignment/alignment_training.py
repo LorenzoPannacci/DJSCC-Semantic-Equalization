@@ -12,7 +12,7 @@ import copy
 import numpy as np
 import random
 
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader
 from alignment.alignment_model import _ConvolutionalAlignment, _LinearAlignment, _ZeroShotAlignment, _MLPAlignment
 
 from model import DeepJSCC
@@ -78,12 +78,24 @@ class AlignmentDataset(Dataset):
     def __getitem__(self, idx):
         x = self.inputs[idx].unsqueeze(0).to(self.device)  # add batch dim
         with torch.no_grad():
-            out1 = self.model1(x)[0]
-            out2 = self.model2(x)[0]
+            out1 = self.model1(x)
+            out2 = self.model2(x)
         if self.flat:
             out1 = out1.flatten()
             out2 = out2.flatten()
         return out1, out2
+
+
+class AlignmentSubset(Dataset):
+    def __init__(self, dataset, indices):
+        self.dataset = dataset
+        self.indices = indices
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        return self.dataset[self.indices[idx]]
 
 def load_alignment_dataset(model1_fp, model2_fp, train_snr, train_loader, c, device, flat=True):
     model1 = load_from_checkpoint(model1_fp, train_snr, c, device).encoder
@@ -143,16 +155,21 @@ def dataset_to_matrices(dataset, batch_size=128):
     return torch.cat(data_1, dim=0), torch.cat(data_2, dim=0)
 
 
-def aligner_least_squares(matrix_1, matrix_2, snr, regularization):
+def train_linear_aligner(data, permutation, n_samples, train_snr, regularization=10000):
     """
     Solve least squares problem with regularization.
     """
+
+    # prepare data
+    indices = permutation[:n_samples]
+    subset = AlignmentSubset(data, indices)
+    matrix_1, matrix_2 = dataset_to_matrices(subset)
 
     X = matrix_1.H
     Y = matrix_2.H
 
     # noise handling
-    snr_linear = 10 ** (snr / 10)
+    snr_linear = 10 ** (train_snr / 10)
     sigma2 = 1.0 / snr_linear # noise variance
     noise_cov = sigma2 * torch.eye(X.shape[0], device=X.device, dtype=X.dtype)
 
@@ -161,20 +178,7 @@ def aligner_least_squares(matrix_1, matrix_2, snr, regularization):
 
     F = Y @ X.H @ torch.linalg.inv(X @ X.H + noise_cov + reg_matrix)
 
-    return _LinearAlignment(align_matrix=F.T)
-
-
-def train_linear_aligner(data, permutation, n_samples, train_snr, regularization=10000):
-    """
-    Train linear aligner with least squares.
-    """
-
-    # prepare data
-    indices = permutation[:n_samples]
-    subset = Subset(data, indices)
-    matrix_1, matrix_2 = dataset_to_matrices(subset)
-
-    return aligner_least_squares(matrix_1, matrix_2, train_snr, regularization)
+    return _LinearAlignment(align_matrix=F.T).cpu()
 
 
 def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
@@ -183,14 +187,14 @@ def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, r
     """
 
     # train settings
-    epochs_max = 10000
+    epochs_max = 1000
     patience = 10
     min_delta = 1e-5
     lambda_reg = 0.001
 
     # prepare data
     indices = permutation[:n_samples]
-    subset = Subset(data, indices)
+    subset = AlignmentSubset(data, indices)
     dataloader = DataLoader(subset, batch_size=batch_size, shuffle=True)
 
     # prepare model and optimizer
@@ -247,7 +251,7 @@ def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, r
     if best_model_state is not None:
         aligner.load_state_dict(best_model_state)
 
-    return aligner, epoch
+    return aligner.cpu(), epoch
 
 
 def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
@@ -256,14 +260,14 @@ def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, rati
     """
 
     # train settings
-    epochs_max = 10000
+    epochs_max = 1000
     patience = 10
     min_delta = 1e-5
     lambda_reg = 0.01
 
     # prepare data
     indices = permutation[:n_samples]
-    subset = Subset(data, indices)
+    subset = AlignmentSubset(data, indices)
     dataloader = DataLoader(subset, batch_size=batch_size, shuffle=True)
 
     # prepare model and optimizer
@@ -321,7 +325,7 @@ def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, rati
     if best_model_state is not None:
         aligner.load_state_dict(best_model_state)
 
-    return aligner, epoch
+    return aligner.cpu(), epoch
 
 
 def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
@@ -337,7 +341,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
 
     # prepare data
     indices = permutation[:n_samples]
-    subset = Subset(data, indices)
+    subset = AlignmentSubset(data, indices)
     dataloader = DataLoader(subset, batch_size=batch_size, shuffle=True)
 
     # prepare model and optimizer
@@ -392,7 +396,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
     if best_model_state is not None:
         aligner.load_state_dict(best_model_state)
     
-    return aligner, epoch
+    return aligner.cpu(), epoch
 
 
 def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usage, device):
@@ -402,7 +406,7 @@ def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usag
     
     # prepare data
     indices = permutation[:n_samples]
-    subset = Subset(data, indices)
+    subset = AlignmentSubset(data, indices)
     dataloader = DataLoader(subset, batch_size=len(subset))
     input, output = next(iter(dataloader))
     input = input.to(device)
@@ -462,4 +466,4 @@ def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usag
         G = torch.Tensor([1]).unsqueeze(0)
 
     # build and returns aligner
-    return _ZeroShotAlignment(F_tilde, G_tilde, G, L, mean)
+    return _ZeroShotAlignment(F_tilde, G_tilde, G, L, mean).cpu()

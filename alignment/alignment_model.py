@@ -42,7 +42,7 @@ class _LinearAlignment(nn.Module):
         super(_LinearAlignment, self).__init__()
 
         if align_matrix is not None:
-            self.align_matrix = nn.Parameter(align_matrix)
+            self.align_matrix = nn.Parameter(align_matrix, requires_grad=False)
 
         else:
             self.align_matrix = nn.Parameter(torch.empty(size, size))
@@ -122,11 +122,11 @@ class _ZeroShotAlignment(nn.Module):
     def __init__(self, F_tilde, G_tilde, G, L, mean):
         super(_ZeroShotAlignment, self).__init__()
 
-        self.F_tilde = nn.Parameter(F_tilde)
-        self.G_tilde = nn.Parameter(G_tilde)
-        self.G = nn.Parameter(G)
-        self.L = nn.Parameter(L)
-        self.mean = nn.Parameter(mean)
+        self.F_tilde = nn.Parameter(F_tilde, requires_grad=False)
+        self.G_tilde = nn.Parameter(G_tilde, requires_grad=False)
+        self.G = nn.Parameter(G, requires_grad=False)
+        self.L = nn.Parameter(L, requires_grad=False)
+        self.mean = nn.Parameter(mean, requires_grad=False)
 
     def compression(self, input):
         x_hat = input.T
@@ -163,6 +163,7 @@ class AlignedDeepJSCC(nn.Module):
 
         # get encoder from model1
         self.encoder = encoder
+        self.encoder.requires_grad = False
         
         # setup channel
         self.snr = snr
@@ -173,9 +174,12 @@ class AlignedDeepJSCC(nn.Module):
 
         # get aligner
         self.aligner = aligner
+        if aligner is not None:
+            self.aligner.requires_grad = False
 
         # get decoder from model2
         self.decoder = decoder
+        self.decoder.requires_grad = False
 
         # get forward function
         if type(self.aligner) == _ZeroShotAlignment:
