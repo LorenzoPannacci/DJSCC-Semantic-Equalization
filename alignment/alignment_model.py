@@ -62,6 +62,41 @@ class _LinearAlignment(nn.Module):
         return x.reshape(shape)
 
 
+class _MLPAlignment(nn.Module):
+    """
+    Aligner class that uses a Multi-Layer Perceptron (MLP).
+    """
+
+    def __init__(self, input_dim, hidden_dims, output_dim=None, nonlinearity=nn.ReLU):
+        super(_MLPAlignment, self).__init__()
+
+        if output_dim is None:
+            output_dim = input_dim
+
+        layers = []
+        dims = [input_dim] + hidden_dims + [output_dim]
+
+        for i in range(len(dims) - 1):
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
+            if i < len(dims) - 2:
+                layers.append(nonlinearity())
+
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, x):
+        # get shape of input
+        shape = x.shape
+
+        # flatten input
+        x = x.flatten(start_dim=1)
+
+        # apply alignment
+        x = self.mlp(x)
+
+        # return to original shape
+        return x.reshape(shape)
+    
+
 class _ConvolutionalAlignment(nn.Module):
     """
     Aligner class that uses one convolutional layer.

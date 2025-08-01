@@ -13,11 +13,12 @@ import numpy as np
 import random
 
 from torch.utils.data import Dataset, DataLoader, Subset
-from alignment.alignment_model import _ConvolutionalAlignment, _LinearAlignment, _ZeroShotAlignment
+from alignment.alignment_model import _ConvolutionalAlignment, _LinearAlignment, _ZeroShotAlignment, _MLPAlignment
 
 from model import DeepJSCC
 from tqdm import tqdm
 from channel import Channel
+
 
 class AlignmentDataset(Dataset):
     """
@@ -112,6 +113,7 @@ def dataset_to_matrices(dataset, batch_size=128):
 
     return torch.cat(data_1, dim=0), torch.cat(data_2, dim=0)
 
+
 def aligner_least_squares(matrix_1, matrix_2, regularization):
     """
     Solve least squares problem with regularization.
@@ -143,6 +145,7 @@ def train_linear_aligner(data, permutation, n_samples):
     matrix_1, matrix_2 = dataset_to_matrices(subset)
 
     return aligner_least_squares(matrix_1, matrix_2, regularization)
+
 
 def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
     """
@@ -216,6 +219,81 @@ def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, r
 
     return aligner, epoch
 
+
+def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
+    """
+    Train MLP aligner with Adam optimization.
+    """
+
+    # train settings
+    epochs_max = 10000
+    patience = 10
+    min_delta = 1e-5
+    lambda_reg = 0.001
+
+    # prepare data
+    indices = permutation[:n_samples]
+    subset = Subset(data, indices)
+    dataloader = DataLoader(subset, batch_size=batch_size, shuffle=True)
+
+    # prepare model and optimizer
+    size = resolution * resolution * 3 * 2 // ratio
+    aligner = _MLPAlignment(size, [size]).to(device)
+    channel = Channel("AWGN", train_snr)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=lambda_reg)
+
+    # init train state
+    best_loss = float('inf')
+    best_model_state = None
+    checks_without_improvement = 0
+    epoch = 0
+
+    # train loop
+    while True:
+        epoch_loss = 0.0
+
+        for inputs, targets in dataloader:
+            
+            if train_snr is not None:
+                inputs = channel(inputs)
+
+            optimizer.zero_grad()
+            outputs = aligner(inputs.to(device))
+
+            mse_loss = criterion(outputs, targets.to(device))
+            loss = inputs.shape[0] * mse_loss
+
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+
+        epoch += 1
+
+        # check if improvement
+        avg_loss = epoch_loss / len(dataloader)
+        if best_loss - avg_loss > min_delta:
+            best_loss = avg_loss
+            best_model_state = copy.deepcopy(aligner.state_dict())
+            checks_without_improvement = 0
+        else:
+            checks_without_improvement += 1
+
+        # break if patience exceeded
+        if checks_without_improvement >= patience:
+            break
+
+        # break if max epochs exceeded
+        if epoch > epochs_max:
+            break
+
+    # restore best model
+    if best_model_state is not None:
+        aligner.load_state_dict(best_model_state)
+
+    return aligner, epoch
+
+
 def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
     """
     Train convolutional aligner with Adam optimization.
@@ -285,6 +363,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
         aligner.load_state_dict(best_model_state)
     
     return aligner, epoch
+
 
 def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usage, device):
     """
