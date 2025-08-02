@@ -12,10 +12,13 @@ from torchvision import transforms
 
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
+import re
+import os
 import gc
 
 from utils import image_normalization
 from alignment.alignment_model import *
+from alignment.alignment_model import _LinearAlignment, _MLPAlignment, _ConvolutionalAlignment, _ZeroShotAlignment
 from alignment.alignment_utils import *
 from alignment.alignment_training import *
 from alignment.alignment_validation import *
@@ -251,23 +254,27 @@ def prepare_image(image_path, resolution):
 
     return test_image
 
-def prepare_aligner(aligner_fp):
+def prepare_aligner(aligner_fp, device, resolution, c):
     if "linear" in aligner_fp or "neural" in aligner_fp:
-        aligner = _LinearAlignment(None, None)
+        aligner = _LinearAlignment(resolution**2)
     
     elif "mlp" in aligner_fp:
-        aligner = _MLPAlignment(input_dim=1, hidden_dims=[1]
+        aligner = _MLPAlignment(input_dim=resolution**2, hidden_dims=[resolution**2])
 
     elif "conv" in aligner_fp:
-        aligner = _ConvolutionalAlignment(in_channels=1, out_channels=1, kernel_size=3)
+        aligner = _ConvolutionalAlignment(in_channels=2*c, out_channels=2*c, kernel_size=5)
     
     elif "zeroshot" in aligner_fp:
+        filename = os.path.basename(aligner_fp)
+        match = re.search(r'_(\d+)\.pth$', filename)
+        n_samples = int(match.group(1))
+
         aligner = _ZeroShotAlignment(
-            F_tilde=torch.zeros(1, 1),
-            G_tilde=torch.zeros(1, 1), 
+            F_tilde=torch.zeros(n_samples, resolution**2),
+            G_tilde=torch.zeros(resolution**2, n_samples), 
             G=torch.zeros(1, 1),
-            L=torch.zeros(1, 1),
-            mean=torch.zeros(1, 1)
+            L=torch.zeros(n_samples, n_samples),
+            mean=torch.zeros(n_samples, 1)
         )
 
     aligner.load_state_dict(torch.load(aligner_fp, map_location=device))
@@ -275,15 +282,14 @@ def prepare_aligner(aligner_fp):
     return aligner
 
 
-def prepare_models(model1_fp, model2_fp, aligner_fp, snr, c):
+def prepare_models(model1_fp, model2_fp, aligner_fp, snr, c, resolution, device):
     model1 = load_deep_jscc(model1_fp, snr, c, "AWGN")
     model2 = load_deep_jscc(model2_fp, snr, c, "AWGN")
 
     encoder = copy.deepcopy(model1.encoder)
     decoder = copy.deepcopy(model2.decoder)
 
-    with open(aligner_fp, 'rb') as f:
-        aligner = pickle.load(f)
+    aligner = prepare_aligner(aligner_fp, device, resolution, c)
 
     aligned_model = AlignedDeepJSCC(encoder, decoder, aligner, snr, "AWGN")
     unaligned_model = AlignedDeepJSCC(encoder, decoder, None, snr, "AWGN")
