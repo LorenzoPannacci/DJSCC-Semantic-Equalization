@@ -15,7 +15,7 @@ from PIL import Image
 import gc
 
 from utils import image_normalization
-from alignment.alignment_model import AlignedDeepJSCC
+from alignment.alignment_model import *
 from alignment.alignment_utils import *
 from alignment.alignment_training import *
 from alignment.alignment_validation import *
@@ -250,6 +250,29 @@ def prepare_image(image_path, resolution):
     test_image = transform(test_image)
 
     return test_image
+
+def prepare_aligner(aligner_fp):
+    if "linear" in aligner_fp or "neural" in aligner_fp:
+        aligner = _LinearAlignment(None, None)
+    
+    elif "mlp" in aligner_fp:
+        aligner = _MLPAlignment(input_dim=1, hidden_dims=[1]
+
+    elif "conv" in aligner_fp:
+        aligner = _ConvolutionalAlignment(in_channels=1, out_channels=1, kernel_size=3)
+    
+    elif "zeroshot" in aligner_fp:
+        aligner = _ZeroShotAlignment(
+            F_tilde=torch.zeros(1, 1),
+            G_tilde=torch.zeros(1, 1), 
+            G=torch.zeros(1, 1),
+            L=torch.zeros(1, 1),
+            mean=torch.zeros(1, 1)
+        )
+
+    aligner.load_state_dict(torch.load(aligner_fp, map_location=device))
+
+    return aligner
 
 
 def prepare_models(model1_fp, model2_fp, aligner_fp, snr, c):
