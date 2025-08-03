@@ -18,7 +18,7 @@ import gc
 
 from utils import image_normalization
 from alignment.alignment_model import *
-from alignment.alignment_model import _LinearAlignment, _MLPAlignment, _ConvolutionalAlignment, _ZeroShotAlignment
+from alignment.alignment_model import _LinearAlignment, _MLPAlignment, _ConvolutionalAlignment, _TwoConvAlignment, _ZeroShotAlignment
 from alignment.alignment_utils import *
 from alignment.alignment_training import *
 from alignment.alignment_validation import *
@@ -254,20 +254,24 @@ def prepare_image(image_path, resolution):
 
     return test_image
 
-def prepare_aligner(aligner_fp, device, resolution, c):
+def prepare_aligner(aligner_fp, device, resolution, c, n_samples=None):
     if "linear" in aligner_fp or "neural" in aligner_fp:
         aligner = _LinearAlignment(resolution**2)
     
     elif "mlp" in aligner_fp:
         aligner = _MLPAlignment(input_dim=resolution**2, hidden_dims=[resolution**2])
 
+    elif "twoconv" in aligner_fp:
+        aligner = _TwoConvAlignment(in_channels=2*c, hidden_channels=2*c, out_channels=2*c, kernel_size=5)
+
     elif "conv" in aligner_fp:
         aligner = _ConvolutionalAlignment(in_channels=2*c, out_channels=2*c, kernel_size=5)
     
     elif "zeroshot" in aligner_fp:
-        filename = os.path.basename(aligner_fp)
-        match = re.search(r'_(\d+)\.pth$', filename)
-        n_samples = int(match.group(1))
+        if n_samples is None:
+            filename = os.path.basename(aligner_fp)
+            match = re.search(r'_(\d+)\.pth$', filename)
+            n_samples = int(match.group(1))
 
         aligner = _ZeroShotAlignment(
             F_tilde=torch.zeros(n_samples, resolution**2),

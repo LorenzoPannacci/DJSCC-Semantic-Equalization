@@ -67,7 +67,7 @@ class _MLPAlignment(nn.Module):
     Aligner class that uses a Multi-Layer Perceptron (MLP).
     """
 
-    def __init__(self, input_dim, hidden_dims, output_dim=None, nonlinearity=nn.ReLU):
+    def __init__(self, input_dim, hidden_dims, output_dim=None, nonlinearity=nn.PReLU):
         super(_MLPAlignment, self).__init__()
 
         if output_dim is None:
@@ -113,6 +113,24 @@ class _ConvolutionalAlignment(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
+
+class _TwoConvAlignment(nn.Module):
+    """
+    Aligner class that uses two convolutional layers.
+    """
+
+    def __init__(self, in_channels, hidden_channels, out_channels, kernel_size=3):
+        super(_TwoConvAlignment, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, hidden_channels, kernel_size, padding=kernel_size//2)
+        self.relu = nn.PReLU(inplace=True)
+        self.conv2 = nn.Conv2d(hidden_channels, out_channels, kernel_size, padding=kernel_size//2)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        return x
+    
 
 class _ZeroShotAlignment(nn.Module):
     """
