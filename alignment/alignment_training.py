@@ -192,169 +192,46 @@ def train_linear_aligner(data, permutation, n_samples, train_snr, regularization
 
 def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
     """
-    Train linear aligner with Adam optimization.
-    """
-
-    # train settings
-    epochs_max = 1000
-    patience = 10
-    min_delta = 1e-5
-    lambda_reg = 0.001
-
-    # prepare data
-    indices = permutation[:n_samples]
-    subset = AlignmentSubset(data, indices)
-    dataloader = DataLoader(subset, batch_size=batch_size, shuffle=True)
-
-    # prepare model and optimizer
-    aligner = _LinearAlignment(size=resolution * resolution * 3 * 2 // ratio).to(device)
-    channel = Channel("AWGN", train_snr)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=lambda_reg)
-
-    # init train state
-    best_loss = float('inf')
-    best_model_state = None
-    checks_without_improvement = 0
-    epoch = 0
-
-    # train loop
-    while True:
-        epoch_loss = 0.0
-
-        for inputs, targets in dataloader:
-            
-            if train_snr is not None:
-                inputs = channel(inputs)
-
-            optimizer.zero_grad()
-            outputs = aligner(inputs.to(device))
-
-            mse_loss = criterion(outputs, targets.to(device))
-            loss = inputs.shape[0] * mse_loss
-
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.item()
-
-        epoch += 1
-
-        # check if improvement
-        avg_loss = epoch_loss / len(dataloader)
-        if best_loss - avg_loss > min_delta:
-            best_loss = avg_loss
-            best_model_state = copy.deepcopy(aligner.state_dict())
-            checks_without_improvement = 0
-        else:
-            checks_without_improvement += 1
-
-        # break if patience exceeded
-        if checks_without_improvement >= patience:
-            break
-
-        # break if max epochs exceeded
-        if epoch > epochs_max:
-            break
-
-    # restore best model
-    if best_model_state is not None:
-        aligner.load_state_dict(best_model_state)
-
-    return aligner.cpu(), epoch
-
-
-def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
-    """
-    Train MLP aligner with Adam optimization.
-    """
-
-    # train settings
-    epochs_max = 1000
-    patience = 10
-    min_delta = 1e-5
-    lambda_reg = 0.01
-
-    # prepare data
-    indices = permutation[:n_samples]
-    subset = AlignmentSubset(data, indices)
-    dataloader = DataLoader(subset, batch_size=batch_size, shuffle=True)
-
-    # prepare model and optimizer
-    size = resolution * resolution * 3 * 2 // ratio
-    aligner = _MLPAlignment(size, [size]).to(device)
-    channel = Channel("AWGN", train_snr)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=lambda_reg)
-
-    # init train state
-    best_loss = float('inf')
-    best_model_state = None
-    checks_without_improvement = 0
-    epoch = 0
-
-    # train loop
-    while True:
-        epoch_loss = 0.0
-
-        for inputs, targets in dataloader:
-            
-            if train_snr is not None:
-                inputs = channel(inputs)
-
-            optimizer.zero_grad()
-            outputs = aligner(inputs.to(device))
-
-            mse_loss = criterion(outputs, targets.to(device))
-            loss = inputs.shape[0] * mse_loss
-
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.item()
-
-        epoch += 1
-
-        # check if improvement
-        avg_loss = epoch_loss / len(dataloader)
-        if best_loss - avg_loss > min_delta:
-            best_loss = avg_loss
-            best_model_state = copy.deepcopy(aligner.state_dict())
-            checks_without_improvement = 0
-        else:
-            checks_without_improvement += 1
-
-        # break if patience exceeded
-        if checks_without_improvement >= patience:
-            break
-
-        # break if max epochs exceeded
-        if epoch > epochs_max:
-            break
-
-    # restore best model
-    if best_model_state is not None:
-        aligner.load_state_dict(best_model_state)
-
-    return aligner.cpu(), epoch
-
-
-def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
-    """
-    Train convolutional aligner with Adam optimization.
+    Train convolutional aligner with Adam optimization using train/validation split.
     """
 
     # train settings
     epochs_max=10000
-    patience=10
+    patience=20
     min_delta=1e-5
     reg_val = 0.001
 
-    # prepare data
+    # prepare data with train/validation split
     indices = permutation[:n_samples]
-    subset = AlignmentSubset(data, indices)
-    dataloader = DataLoader(subset, batch_size=batch_size, shuffle=True)
+    
+    # handle small datasets (< 10 samples)
+    if n_samples < 10:
+        use_val = False
+
+        # use all data for training, no validation split
+        train_indices = indices
+        val_indices = []
+
+    else:
+        use_val = True
+
+        # split into 90 train - 10 validation
+        val_size = max(1, int(0.1 * n_samples))
+        train_size = n_samples - val_size
+        
+        train_indices = indices[:train_size]
+        val_indices = indices[train_size:]
+    
+    # create datasets and dataloaders
+    train_subset = AlignmentSubset(data, train_indices)
+    train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    
+    if use_val:
+        val_subset = AlignmentSubset(data, val_indices)
+        val_dataloader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
     # prepare model and optimizer
-    aligner = _ConvolutionalAlignment(in_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
+    aligner = _LinearAlignment(size=resolution * resolution * 3 * 2 // ratio).to(device)
     channel = Channel("AWGN", train_snr)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=reg_val)
@@ -367,10 +244,11 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
 
     # train loop
     while True:
-        epoch_loss = 0.0
+        # training phase
+        aligner.train()
+        train_loss = 0.0
 
-        for inputs, targets in dataloader:
-
+        for inputs, targets in train_dataloader:
             if train_snr is not None:
                 inputs = channel(inputs)
 
@@ -380,14 +258,36 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
             loss = loss * inputs.shape[0] # scale by batch size
             loss.backward()
             optimizer.step()
-            epoch_loss += loss.item()
+            train_loss += loss.item()
+
+        # validation phase
+        if use_val:
+            aligner.eval()
+            val_loss = 0.0
+            
+            with torch.no_grad():
+                for inputs, targets in val_dataloader:
+                    if train_snr is not None:
+                        inputs = channel(inputs)
+                    
+                    outputs = aligner(inputs.to(device))
+                    loss = criterion(outputs, targets.to(device))
+                    loss = loss * inputs.shape[0] # scale by batch size
+                    val_loss += loss.item()
+            
+            # use validation loss for early stopping
+            avg_val_loss = val_loss / len(val_dataloader)
+            current_loss = avg_val_loss
+        else:
+            # use training loss if no validation set
+            avg_train_loss = train_loss / len(train_dataloader)
+            current_loss = avg_train_loss
 
         epoch += 1
 
         # check if improvement
-        avg_loss = epoch_loss / len(dataloader)
-        if best_loss - avg_loss > min_delta:
-            best_loss = avg_loss
+        if best_loss - current_loss > min_delta:
+            best_loss = current_loss
             best_model_state = copy.deepcopy(aligner.state_dict())
             checks_without_improvement = 0
         else:
@@ -407,21 +307,283 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
     
     return aligner.cpu(), epoch
 
-def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
+
+def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, ratio, train_snr, device):
     """
-    Train convolutional aligner with Adam optimization.
+    Train convolutional aligner with Adam optimization using train/validation split.
     """
 
     # train settings
     epochs_max=10000
-    patience=10
+    patience=20
     min_delta=1e-5
     reg_val = 0.01
 
-    # prepare data
+    # prepare data with train/validation split
     indices = permutation[:n_samples]
-    subset = AlignmentSubset(data, indices)
-    dataloader = DataLoader(subset, batch_size=batch_size, shuffle=True)
+    
+    # handle small datasets (< 10 samples)
+    if n_samples < 10:
+        use_val = False
+
+        # use all data for training, no validation split
+        train_indices = indices
+        val_indices = []
+
+    else:
+        use_val = True
+
+        # split into 90 train - 10 validation
+        val_size = max(1, int(0.1 * n_samples))
+        train_size = n_samples - val_size
+        
+        train_indices = indices[:train_size]
+        val_indices = indices[train_size:]
+    
+    # create datasets and dataloaders
+    train_subset = AlignmentSubset(data, train_indices)
+    train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    
+    if use_val:
+        val_subset = AlignmentSubset(data, val_indices)
+        val_dataloader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
+
+    # prepare model and optimizer
+    size = resolution * resolution * 3 * 2 // ratio
+    aligner = _MLPAlignment(size, [size]).to(device)
+    channel = Channel("AWGN", train_snr)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=reg_val)
+
+    # init train state
+    best_loss = float('inf')
+    best_model_state = None
+    checks_without_improvement = 0
+    epoch = 0
+
+    # train loop
+    while True:
+        # training phase
+        aligner.train()
+        train_loss = 0.0
+
+        for inputs, targets in train_dataloader:
+            if train_snr is not None:
+                inputs = channel(inputs)
+
+            optimizer.zero_grad()
+            outputs = aligner(inputs.to(device))
+            loss = criterion(outputs, targets.to(device))
+            loss = loss * inputs.shape[0] # scale by batch size
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+
+        # validation phase
+        if use_val:
+            aligner.eval()
+            val_loss = 0.0
+            
+            with torch.no_grad():
+                for inputs, targets in val_dataloader:
+                    if train_snr is not None:
+                        inputs = channel(inputs)
+                    
+                    outputs = aligner(inputs.to(device))
+                    loss = criterion(outputs, targets.to(device))
+                    loss = loss * inputs.shape[0] # scale by batch size
+                    val_loss += loss.item()
+            
+            # use validation loss for early stopping
+            avg_val_loss = val_loss / len(val_dataloader)
+            current_loss = avg_val_loss
+        else:
+            # use training loss if no validation set
+            avg_train_loss = train_loss / len(train_dataloader)
+            current_loss = avg_train_loss
+
+        epoch += 1
+
+        # check if improvement
+        if best_loss - current_loss > min_delta:
+            best_loss = current_loss
+            best_model_state = copy.deepcopy(aligner.state_dict())
+            checks_without_improvement = 0
+        else:
+            checks_without_improvement += 1
+
+        # break if patience exceeded
+        if checks_without_improvement >= patience:
+            break
+
+        # break if max epochs exceeded
+        if epoch > epochs_max:
+            break
+
+    # restore best model
+    if best_model_state is not None:
+        aligner.load_state_dict(best_model_state)
+    
+    return aligner.cpu(), epoch
+
+
+def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
+    """
+    Train convolutional aligner with Adam optimization using train/validation split.
+    """
+
+    # train settings
+    epochs_max=10000
+    patience=20
+    min_delta=1e-5
+    reg_val = 0.001
+
+    # prepare data with train/validation split
+    indices = permutation[:n_samples]
+    
+    # handle small datasets (< 10 samples)
+    if n_samples < 10:
+        use_val = False
+
+        # use all data for training, no validation split
+        train_indices = indices
+        val_indices = []
+
+    else:
+        use_val = True
+
+        # split into 90 train - 10 validation
+        val_size = max(1, int(0.1 * n_samples))
+        train_size = n_samples - val_size
+        
+        train_indices = indices[:train_size]
+        val_indices = indices[train_size:]
+    
+    # create datasets and dataloaders
+    train_subset = AlignmentSubset(data, train_indices)
+    train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    
+    if use_val:
+        val_subset = AlignmentSubset(data, val_indices)
+        val_dataloader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
+
+    # prepare model and optimizer
+    aligner = _ConvolutionalAlignment(in_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
+    channel = Channel("AWGN", train_snr)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=reg_val)
+
+    # init train state
+    best_loss = float('inf')
+    best_model_state = None
+    checks_without_improvement = 0
+    epoch = 0
+
+    # train loop
+    while True:
+        # training phase
+        aligner.train()
+        train_loss = 0.0
+
+        for inputs, targets in train_dataloader:
+            if train_snr is not None:
+                inputs = channel(inputs)
+
+            optimizer.zero_grad()
+            outputs = aligner(inputs.to(device))
+            loss = criterion(outputs, targets.to(device))
+            loss = loss * inputs.shape[0] # scale by batch size
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+
+        # validation phase
+        if use_val:
+            aligner.eval()
+            val_loss = 0.0
+            
+            with torch.no_grad():
+                for inputs, targets in val_dataloader:
+                    if train_snr is not None:
+                        inputs = channel(inputs)
+                    
+                    outputs = aligner(inputs.to(device))
+                    loss = criterion(outputs, targets.to(device))
+                    loss = loss * inputs.shape[0] # scale by batch size
+                    val_loss += loss.item()
+            
+            # use validation loss for early stopping
+            avg_val_loss = val_loss / len(val_dataloader)
+            current_loss = avg_val_loss
+        else:
+            # use training loss if no validation set
+            avg_train_loss = train_loss / len(train_dataloader)
+            current_loss = avg_train_loss
+
+        epoch += 1
+
+        # check if improvement
+        if best_loss - current_loss > min_delta:
+            best_loss = current_loss
+            best_model_state = copy.deepcopy(aligner.state_dict())
+            checks_without_improvement = 0
+        else:
+            checks_without_improvement += 1
+
+        # break if patience exceeded
+        if checks_without_improvement >= patience:
+            break
+
+        # break if max epochs exceeded
+        if epoch > epochs_max:
+            break
+
+    # restore best model
+    if best_model_state is not None:
+        aligner.load_state_dict(best_model_state)
+    
+    return aligner.cpu(), epoch
+
+
+def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
+    """
+    Train convolutional aligner with Adam optimization using train/validation split.
+    """
+
+    # train settings
+    epochs_max=10000
+    patience=20
+    min_delta=1e-5
+    reg_val = 0.01
+
+    # prepare data with train/validation split
+    indices = permutation[:n_samples]
+    
+    # handle small datasets (< 10 samples)
+    if n_samples < 10:
+        use_val = False
+
+        # use all data for training, no validation split
+        train_indices = indices
+        val_indices = []
+
+    else:
+        use_val = True
+
+        # split into 90 train - 10 validation
+        val_size = max(1, int(0.1 * n_samples))
+        train_size = n_samples - val_size
+        
+        train_indices = indices[:train_size]
+        val_indices = indices[train_size:]
+    
+    # create datasets and dataloaders
+    train_subset = AlignmentSubset(data, train_indices)
+    train_dataloader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    
+    if use_val:
+        val_subset = AlignmentSubset(data, val_indices)
+        val_dataloader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
 
     # prepare model and optimizer
     aligner = _TwoConvAlignment(in_channels=2*c, hidden_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
@@ -437,10 +599,11 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
 
     # train loop
     while True:
-        epoch_loss = 0.0
+        # training phase
+        aligner.train()
+        train_loss = 0.0
 
-        for inputs, targets in dataloader:
-
+        for inputs, targets in train_dataloader:
             if train_snr is not None:
                 inputs = channel(inputs)
 
@@ -450,14 +613,36 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
             loss = loss * inputs.shape[0] # scale by batch size
             loss.backward()
             optimizer.step()
-            epoch_loss += loss.item()
+            train_loss += loss.item()
+
+        # validation phase
+        if use_val:
+            aligner.eval()
+            val_loss = 0.0
+            
+            with torch.no_grad():
+                for inputs, targets in val_dataloader:
+                    if train_snr is not None:
+                        inputs = channel(inputs)
+                    
+                    outputs = aligner(inputs.to(device))
+                    loss = criterion(outputs, targets.to(device))
+                    loss = loss * inputs.shape[0] # scale by batch size
+                    val_loss += loss.item()
+            
+            # use validation loss for early stopping
+            avg_val_loss = val_loss / len(val_dataloader)
+            current_loss = avg_val_loss
+        else:
+            # use training loss if no validation set
+            avg_train_loss = train_loss / len(train_dataloader)
+            current_loss = avg_train_loss
 
         epoch += 1
 
         # check if improvement
-        avg_loss = epoch_loss / len(dataloader)
-        if best_loss - avg_loss > min_delta:
-            best_loss = avg_loss
+        if best_loss - current_loss > min_delta:
+            best_loss = current_loss
             best_model_state = copy.deepcopy(aligner.state_dict())
             checks_without_improvement = 0
         else:

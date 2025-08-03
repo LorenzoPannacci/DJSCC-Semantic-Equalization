@@ -122,7 +122,7 @@ class _TwoConvAlignment(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, kernel_size=3):
         super(_TwoConvAlignment, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, hidden_channels, kernel_size, padding=kernel_size//2)
-        self.relu = nn.PReLU(inplace=True)
+        self.relu = nn.PReLU()
         self.conv2 = nn.Conv2d(hidden_channels, out_channels, kernel_size, padding=kernel_size//2)
 
     def forward(self, x):
