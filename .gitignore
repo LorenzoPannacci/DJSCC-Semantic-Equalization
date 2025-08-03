@@ -13,5 +13,6 @@ output.txt
 todo.txt
 /data
 /alignment/logs
-/alignment/models
 /alignment/old
+/alignment/models/old
+/alignment/models/plots
