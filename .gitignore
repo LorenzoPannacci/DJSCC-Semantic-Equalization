@@ -16,3 +16,5 @@ todo.txt
 /alignment/old
 /alignment/models/old
 /alignment/models/plots
+/alignment/logs_32
+/alignment/logs_96
