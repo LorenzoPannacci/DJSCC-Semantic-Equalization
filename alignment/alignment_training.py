@@ -164,7 +164,7 @@ def dataset_to_matrices(dataset, batch_size=128):
     return torch.cat(data_1, dim=0), torch.cat(data_2, dim=0)
 
 
-def train_linear_aligner(data, permutation, n_samples, train_snr, regularization=10000):
+def train_linear_aligner(data, permutation, n_samples, train_snr):
     """
     Solve least squares problem with regularization.
     """
@@ -177,15 +177,11 @@ def train_linear_aligner(data, permutation, n_samples, train_snr, regularization
     X = matrix_1.H
     Y = matrix_2.H
 
-    # noise handling
-    snr_linear = 10 ** (train_snr / 10)
-    sigma2 = 1.0 / snr_linear # noise variance
-    noise_cov = sigma2 * torch.eye(X.shape[0], device=X.device, dtype=X.dtype)
-
-    # regularization
+    # noise handling with regularization
+    regularization = 1000 * 10 ** (-train_snr / 30)
     reg_matrix = regularization * torch.eye(X.shape[0], device=X.device, dtype=X.dtype)
 
-    F = Y @ X.H @ torch.linalg.inv(X @ X.H + noise_cov + reg_matrix)
+    F = Y @ X.H @ torch.linalg.inv(X @ X.H + reg_matrix)
 
     return _LinearAlignment(align_matrix=F.T).cpu()
 
