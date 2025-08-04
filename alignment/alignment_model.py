@@ -110,6 +110,8 @@ class _ConvolutionalAlignment(nn.Module):
         super(_ConvolutionalAlignment, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=kernel_size//2)
 
+        nn.init.kaiming_normal_(self.conv.weight, mode='fan_out', nonlinearity='leaky_relu')
+
     def forward(self, x):
         return self.conv(x)
 
@@ -122,12 +124,15 @@ class _TwoConvAlignment(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, kernel_size=3):
         super(_TwoConvAlignment, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, hidden_channels, kernel_size, padding=kernel_size//2)
-        self.relu = nn.PReLU()
+        self.non_linearity = nn.PReLU()
         self.conv2 = nn.Conv2d(hidden_channels, out_channels, kernel_size, padding=kernel_size//2)
+
+        nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='leaky_relu')
+        nn.init.kaiming_normal_(self.conv2.weight, mode='fan_out', nonlinearity='leaky_relu')
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.relu(x)
+        x = self.non_linearity(x)
         x = self.conv2(x)
         return x
     

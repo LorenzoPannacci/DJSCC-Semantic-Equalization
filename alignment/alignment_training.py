@@ -32,7 +32,7 @@ def get_data_loaders(dataset, resolution, batch_size, num_workers):
         train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
 
         test_dataset = datasets.CIFAR10(root='../dataset/', train=False, download=True, transform=transform)
-        test_loader = DataLoader(test_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        test_loader = DataLoader(test_dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
     elif dataset == 'imagenet':
         # the size of paper is 128
@@ -44,7 +44,7 @@ def get_data_loaders(dataset, resolution, batch_size, num_workers):
         train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
 
         test_dataset = Vanilla(root='./dataset/ImageNet/val', transform=transform)
-        test_loader = DataLoader(test_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        test_loader = DataLoader(test_dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
     elif dataset == 'imagenette':
         transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((resolution, resolution))])
@@ -53,7 +53,7 @@ def get_data_loaders(dataset, resolution, batch_size, num_workers):
         train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
 
         test_dataset = datasets.Imagenette(root='../dataset/', split="val", download=True, transform=transform)
-        test_loader = DataLoader(test_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        test_loader = DataLoader(test_dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
     else:
         raise Exception('Unknown dataset')
@@ -229,7 +229,7 @@ def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, r
     # prepare model and optimizer
     aligner = _LinearAlignment(size=resolution * resolution * 3 * 2 // ratio).to(device)
     channel = Channel("AWGN", train_snr)
-    criterion = nn.MSELoss()
+    criterion = nn.MSELoss(reduction='mean')
     optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=reg_val)
 
     # init train state
@@ -251,7 +251,7 @@ def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, r
             optimizer.zero_grad()
             outputs = aligner(inputs.to(device))
             loss = criterion(outputs, targets.to(device))
-            loss = loss * inputs.shape[0] # scale by batch size
+            loss = loss * inputs.shape[0]
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -268,7 +268,7 @@ def train_neural_aligner(data, permutation, n_samples, batch_size, resolution, r
                     
                     outputs = aligner(inputs.to(device))
                     loss = criterion(outputs, targets.to(device))
-                    loss = loss * inputs.shape[0] # scale by batch size
+                    loss = loss * inputs.shape[0]
                     val_loss += loss.item()
             
             # use validation loss for early stopping
@@ -313,7 +313,7 @@ def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, rati
     epochs_max=10000
     patience=20
     min_delta=1e-5
-    reg_val = 0.01
+    reg_val = 0.001
 
     # prepare data with train/validation split
     indices = permutation[:n_samples]
@@ -348,8 +348,8 @@ def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, rati
     size = resolution * resolution * 3 * 2 // ratio
     aligner = _MLPAlignment(size, [size]).to(device)
     channel = Channel("AWGN", train_snr)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=reg_val)
+    criterion = nn.MSELoss(reduction='mean')
+    optimizer = optim.Adam(aligner.parameters(), lr=1e-4, weight_decay=reg_val)
 
     # init train state
     best_loss = float('inf')
@@ -370,7 +370,7 @@ def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, rati
             optimizer.zero_grad()
             outputs = aligner(inputs.to(device))
             loss = criterion(outputs, targets.to(device))
-            loss = loss * inputs.shape[0] # scale by batch size
+            loss = loss * inputs.shape[0]
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -387,7 +387,7 @@ def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, rati
                     
                     outputs = aligner(inputs.to(device))
                     loss = criterion(outputs, targets.to(device))
-                    loss = loss * inputs.shape[0] # scale by batch size
+                    loss = loss * inputs.shape[0]
                     val_loss += loss.item()
             
             # use validation loss for early stopping
@@ -430,7 +430,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
 
     # train settings
     epochs_max=10000
-    patience=20
+    patience=10
     min_delta=1e-5
     reg_val = 0.001
 
@@ -466,8 +466,8 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
     # prepare model and optimizer
     aligner = _ConvolutionalAlignment(in_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
     channel = Channel("AWGN", train_snr)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=reg_val)
+    criterion = nn.MSELoss(reduction='mean')
+    optimizer = optim.Adam(aligner.parameters(), lr=1e-4, weight_decay=reg_val)
 
     # init train state
     best_loss = float('inf')
@@ -488,7 +488,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
             optimizer.zero_grad()
             outputs = aligner(inputs.to(device))
             loss = criterion(outputs, targets.to(device))
-            loss = loss * inputs.shape[0] # scale by batch size
+            loss = loss * inputs.shape[0]
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -505,7 +505,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
                     
                     outputs = aligner(inputs.to(device))
                     loss = criterion(outputs, targets.to(device))
-                    loss = loss * inputs.shape[0] # scale by batch size
+                    loss = loss * inputs.shape[0]
                     val_loss += loss.item()
             
             # use validation loss for early stopping
@@ -550,7 +550,7 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
     epochs_max=10000
     patience=20
     min_delta=1e-5
-    reg_val = 0.01
+    reg_val = 0.001
 
     # prepare data with train/validation split
     indices = permutation[:n_samples]
@@ -584,8 +584,8 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
     # prepare model and optimizer
     aligner = _TwoConvAlignment(in_channels=2*c, hidden_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
     channel = Channel("AWGN", train_snr)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=reg_val)
+    criterion = nn.MSELoss(reduction='mean')
+    optimizer = optim.Adam(aligner.parameters(), lr=1e-4, weight_decay=reg_val)
 
     # init train state
     best_loss = float('inf')
@@ -606,7 +606,7 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
             optimizer.zero_grad()
             outputs = aligner(inputs.to(device))
             loss = criterion(outputs, targets.to(device))
-            loss = loss * inputs.shape[0] # scale by batch size
+            loss = loss * inputs.shape[0]
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -623,7 +623,7 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
                     
                     outputs = aligner(inputs.to(device))
                     loss = criterion(outputs, targets.to(device))
-                    loss = loss * inputs.shape[0] # scale by batch size
+                    loss = loss * inputs.shape[0]
                     val_loss += loss.item()
             
             # use validation loss for early stopping
