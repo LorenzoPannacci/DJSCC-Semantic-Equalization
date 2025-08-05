@@ -465,7 +465,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
     aligner = _ConvolutionalAlignment(in_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
     channel = Channel("AWGN", train_snr)
     criterion = nn.MSELoss(reduction='mean')
-    optimizer = optim.Adam(aligner.parameters(), lr=1e-4, weight_decay=regularization)
+    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=regularization)
 
     # init train state
     best_loss = float('inf')
@@ -548,6 +548,7 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
     epochs_max=10000
     patience=20
     min_delta=1e-5
+    regularization = 0.001
 
     # prepare data with train/validation split
     indices = permutation[:n_samples]
@@ -582,7 +583,7 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
     aligner = _TwoConvAlignment(in_channels=2*c, hidden_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
     channel = Channel("AWGN", train_snr)
     criterion = nn.MSELoss(reduction='mean')
-    optimizer = optim.Adam(aligner.parameters(), lr=1e-4)
+    optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=regularization)
 
     # init train state
     best_loss = float('inf')
