@@ -286,18 +286,18 @@ def prepare_aligner(aligner_fp, device, resolution, c, n_samples=None):
     return aligner
 
 
-def prepare_models(model1_fp, model2_fp, aligner_fp, snr, c, resolution, device):
-    model1 = load_deep_jscc(model1_fp, snr, c, "AWGN")
-    model2 = load_deep_jscc(model2_fp, snr, c, "AWGN")
+def prepare_models(model1_fp, model2_fp, aligner_fp, snr, c, resolution, channel_type, device):
+    model1 = load_deep_jscc(model1_fp, snr, c, channel_type)
+    model2 = load_deep_jscc(model2_fp, snr, c, channel_type)
 
     encoder = copy.deepcopy(model1.encoder)
     decoder = copy.deepcopy(model2.decoder)
 
     aligner = prepare_aligner(aligner_fp, device, resolution, c)
 
-    aligned_model = AlignedDeepJSCC(encoder, decoder, aligner, snr, "AWGN")
-    unaligned_model = AlignedDeepJSCC(encoder, decoder, None, snr, "AWGN")
-    no_mismatch_model = AlignedDeepJSCC(encoder, copy.deepcopy(load_deep_jscc(model1_fp, snr, c, "AWGN").decoder), None, snr, "AWGN")
+    aligned_model = AlignedDeepJSCC(encoder, decoder, aligner, snr, channel_type)
+    unaligned_model = AlignedDeepJSCC(encoder, decoder, None, snr, channel_type)
+    no_mismatch_model = AlignedDeepJSCC(encoder, copy.deepcopy(load_deep_jscc(model1_fp, snr, c, channel_type).decoder), None, snr, channel_type)
 
     return no_mismatch_model, unaligned_model, aligned_model
 

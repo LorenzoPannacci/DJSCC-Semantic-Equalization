@@ -164,7 +164,7 @@ def dataset_to_matrices(dataset, batch_size=128):
     return torch.cat(data_1, dim=0), torch.cat(data_2, dim=0)
 
 
-def train_linear_aligner(data, permutation, n_samples, train_snr):
+def train_linear_aligner(data, permutation, n_samples, train_snr, channel_type):
     """
     Solve least squares problem with regularization.
     """
@@ -182,7 +182,12 @@ def train_linear_aligner(data, permutation, n_samples, train_snr):
     sigma2 = 1.0 / snr_linear # noise variance
     noise_cov = sigma2 * torch.eye(X.shape[0], device=X.device, dtype=X.dtype)
 
-    regularization = 1000 * 10 ** (-train_snr / 30)
+    if channel_type == "AWGN":
+        regularization = 1000 * 10 ** (-train_snr / 30)
+
+    elif channel_type == "Rayleigh":
+        regularization = 1000
+
     reg_matrix = regularization * torch.eye(X.shape[0], device=X.device, dtype=X.dtype)
 
     F = Y @ X.H @ torch.linalg.inv(X @ X.H + noise_cov + reg_matrix)
@@ -425,7 +430,7 @@ def train_mlp_aligner(data, permutation, n_samples, batch_size, resolution, rati
     return aligner.cpu(), epoch
 
 
-def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
+def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, channel_type, device):
     """
     Train convolutional aligner with Adam optimization using train/validation split.
     """
@@ -467,7 +472,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
 
     # prepare model and optimizer
     aligner = _ConvolutionalAlignment(in_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
-    channel = Channel("AWGN", train_snr)
+    channel = Channel(channel_type, train_snr)
     criterion = nn.MSELoss(reduction='mean')
     optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=regularization)
 
@@ -543,7 +548,7 @@ def train_conv_aligner(data, permutation, n_samples, c, batch_size, train_snr, d
     return aligner.cpu(), epoch
 
 
-def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr, device):
+def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr, channel_type, device):
     """
     Train convolutional aligner with Adam optimization using train/validation split.
     """
@@ -585,7 +590,7 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
 
     # prepare model and optimizer
     aligner = _TwoConvAlignment(in_channels=2*c, hidden_channels=2*c, out_channels=2*c, kernel_size=5).to(device)
-    channel = Channel("AWGN", train_snr)
+    channel = Channel(channel_type, train_snr)
     criterion = nn.MSELoss(reduction='mean')
     optimizer = optim.Adam(aligner.parameters(), lr=1e-3, weight_decay=regularization)
 
@@ -661,7 +666,7 @@ def train_twoconv_aligner(data, permutation, n_samples, c, batch_size, train_snr
     return aligner.cpu(), epoch
 
 
-def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usage, device):
+def train_zeroshot_aligner(data, permutation, n_samples, train_snr, channel_usage, channel_type, device):
     """
     Initializes zeroshot aligner.
     """

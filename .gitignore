@@ -14,3 +14,6 @@ todo.txt
 /data
 /alignment/logs_96
 /alignment/models/plots
+/alignment/logs_96_AWGN
+/alignment/logs_96_Rayleigh
+/alignment/logs_rayleigh_96
