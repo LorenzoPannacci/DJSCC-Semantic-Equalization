@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Dec  17:00:00 2023
-
-@author: chun
-"""
 import os
 import torch
 import torch.nn as nn
@@ -63,6 +57,7 @@ def evaluate_epoch(model, param, data_loader):
 
     return epoch_loss
 
+
 def parse_snr(value):
     from ast import literal_eval
 
@@ -71,6 +66,7 @@ def parse_snr(value):
         return literal_eval(value) if '(' in value else float(value)
     except (ValueError, SyntaxError):
         raise argparse.ArgumentTypeError(f"Invalid value for snr_list: {value}")
+
 
 def config_parser_pipeline():
     import argparse

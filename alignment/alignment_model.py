@@ -1,13 +1,7 @@
-# -*- coding: utf-8 -*-
-"""
-@author: LorenzoPannacci
-
-In this file are defined all aligners and the DeepJSCC class that uses the aligners.
-"""
-
 import torch.nn as nn
 from channel import Channel
 import torch
+
 
 def a_inv_times_b(a, b):
     """

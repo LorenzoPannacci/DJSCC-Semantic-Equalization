@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-@author: LorenzoPannacci
-"""
-
 import numpy as np
 import torch
 import pickle

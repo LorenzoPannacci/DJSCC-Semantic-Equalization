@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-@author: LorenzoPannacci
-
-Utils functions.
-"""
-
 import torch
 from model import DeepJSCC
 import torch.nn.functional as F

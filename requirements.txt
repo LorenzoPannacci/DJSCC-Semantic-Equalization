@@ -1,6 +1,11 @@
-torch
-torchvison
+numpy==2.1.2
+torch==2.7.1
+torchaudio==2.7.1
+torchvision==0.22.1
+pillow==11.0.0
+tensorboard==2.20.0
+tensorboard-data-server==0.7.2
+tensorboardX==2.6.4
+argparse
 matplotlib
 tqdm
-numpy
-pillow

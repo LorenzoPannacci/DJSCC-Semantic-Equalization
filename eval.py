@@ -12,6 +12,7 @@ from tensorboardX import SummaryWriter
 import glob
 from concurrent.futures import ProcessPoolExecutor
 
+
 def eval_snr(model, test_loader, writer, param, times=10):
     snr_list = range(0, 26, 1)
     for snr in snr_list:
@@ -23,7 +24,6 @@ def eval_snr(model, test_loader, writer, param, times=10):
         test_loss /= times
         psnr = get_psnr(image=None, gt=None, mse=test_loss)
         writer.add_scalar('psnr', psnr, snr)
-        
 
 
 def process_config(config_path, output_dir, dataset_name, times):
@@ -58,6 +58,7 @@ def process_config(config_path, output_dir, dataset_name, times):
     model.load_state_dict(torch.load(pkl_list[-1]))
     eval_snr(model, test_loader, writer, params, times)
     writer.close()
+
 
 def main():
     times = 10

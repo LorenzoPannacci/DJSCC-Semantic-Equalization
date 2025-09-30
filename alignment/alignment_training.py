@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-@author: LorenzoPannacci
-
-In this file are defined functions and classes for training of aligners.
-"""
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
